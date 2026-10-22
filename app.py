@@ -3,14 +3,11 @@ import re
 import requests
 from bs4 import BeautifulSoup
 from typing import Dict, Tuple
+from urllib.parse import urlparse, unquote
 
 # =========================================================
 # 1. TARIFF SCHEDULE & SETTINGS
 # =========================================================
-# Optional: Paste your free ScraperAPI key inside the quotes if you have one:
-SCRAPER_API_KEY = "34f6af46dd2237d85972a508370b8ae3"
-
-# Nepal Customs Standard Rates
 EXCHANGE_RATE_INR_TO_NPR = 1.62   # Official peg 1.60 + ~1.25% bank/cross-border markup
 FREIGHT_PER_KG_NPR = 550.0        # Courier rate per kg (India to Kathmandu)
 INSURANCE_RATE = 0.01             # 1% standard cargo insurance
@@ -31,7 +28,7 @@ HS_DATABASE: Dict[str, Dict] = {
         "vat": 0.13
     },
     "8518.30": {
-        "description": "Headphones / Earphones / TWS Earbuds",
+        "description": "Headphones / Earbuds / Speakers",
         "customs": 0.15,
         "excise": 0.00,
         "vat": 0.13
@@ -43,21 +40,39 @@ HS_DATABASE: Dict[str, Dict] = {
         "vat": 0.13
     },
     "6109.10": {
-        "description": "Clothing / T-shirts / Garments",
+        "description": "Western Apparel / T-shirts / Hoodies / Jeans",
         "customs": 0.20,
         "excise": 0.00,
         "vat": 0.13
     },
+    "6204.42": {
+        "description": "Ethnic Wear / Sarees / Kurtas / Lehengas",
+        "customs": 0.15,
+        "excise": 0.00,
+        "vat": 0.13
+    },
     "6404.11": {
-        "description": "Footwear / Sports Shoes / Sneakers",
+        "description": "Footwear / Sports Shoes / Sandals / Heels",
         "customs": 0.20,
         "excise": 0.00,
         "vat": 0.13
     },
     "3304.99": {
-        "description": "Cosmetics / Skincare / Creams / Serums",
+        "description": "Cosmetics / Skincare / Makeup / Perfumes",
         "customs": 0.15,
         "excise": 0.05,
+        "vat": 0.13
+    },
+    "2106.10": {
+        "description": "Health Supplements / Whey Protein / Vitamins",
+        "customs": 0.15,
+        "excise": 0.00,
+        "vat": 0.13
+    },
+    "8509.40": {
+        "description": "Kitchen & Home Appliances (Mixers, Air Fryers)",
+        "customs": 0.15,
+        "excise": 0.00,
         "vat": 0.13
     },
     "4901.99": {
@@ -81,131 +96,243 @@ HS_DATABASE: Dict[str, Dict] = {
 }
 
 # =========================================================
-# 2. LOGIC FUNCTIONS
+# 2. UNIVERSAL INDIAN E-COMMERCE EXTRACTOR
 # =========================================================
-def auto_detect_hs_code(title: str) -> str:
-    """Matches product title to the closest Nepal Customs HS Code."""
-    t = title.lower()
-    if any(k in t for k in ["laptop", "macbook", "thinkpad", "notebook", "chromebook"]):
-        return "8471.30"
-    if any(k in t for k in ["iphone", "smartphone", "galaxy", "redmi", "oneplus", "realme", "phone"]):
-        return "8517.13"
-    if any(k in t for k in ["headphone", "earphone", "airpods", "buds", "earbuds", "headset"]):
-        return "8518.30"
-    if any(k in t for k in ["smartwatch", "watch", "smart band", "fitness band"]):
-        return "9102.12"
-    if any(k in t for k in ["shirt", "t-shirt", "pant", "trousers", "hoodie", "dress", "jacket", "jeans"]):
-        return "6109.10"
-    if any(k in t for k in ["shoe", "sneaker", "sandal", "boots", "crocs", "loafers"]):
-        return "6404.11"
-    if any(k in t for k in ["serum", "lotion", "cream", "lipstick", "perfume", "shampoo", "sunscreen"]):
-        return "3304.99"
-    if any(k in t for k in ["book", "novel", "paperback", "hardcover"]):
-        return "4901.99"
-    if any(k in t for k in ["tv", "television", "monitor"]):
-        return "8528.72"
-    return "9999.99"
+def detect_platform(url: str) -> str:
+    """Identifies the Indian platform from the URL domain."""
+    domain = urlparse(url).netloc.lower()
+    if "amazon" in domain:
+        return "Amazon India"
+    elif "flipkart" in domain:
+        return "Flipkart"
+    elif "myntra" in domain:
+        return "Myntra"
+    elif "nykaa" in domain:
+        return "Nykaa"
+    elif "ajio" in domain:
+        return "Ajio"
+    elif "tatacliq" in domain:
+        return "Tata CLiQ"
+    elif "meesho" in domain:
+        return "Meesho"
+    elif "croma" in domain:
+        return "Croma"
+    elif "firstcry" in domain:
+        return "FirstCry"
+    elif "snitch" in domain:
+        return "Snitch"
+    elif "boat" in domain:
+        return "boAt Lifestyle"
+    elif domain:
+        return domain.replace("www.", "").split(".")[0].capitalize() + " (Direct Store)"
+    return "Indian E-Commerce"
 
 
-def scrape_indian_url(url: str) -> Tuple[str, float]:
-    """Scrapes product title and INR price safely."""
-    title = ""
-    price = 0.0
-
+def extract_universal_title_from_url(url: str) -> str:
+    """Extracts clean product names from URL path across all platforms."""
     try:
-        if SCRAPER_API_KEY and len(SCRAPER_API_KEY) > 10:
-            target_url = f"http://api.scraperapi.com?api_key={SCRAPER_API_KEY}&url={url}"
-            headers = {}
-        else:
-            target_url = url
-            headers = {
-                "User-Agent": (
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-                ),
-                "Accept-Language": "en-US,en;q=0.9"
-            }
+        parsed = urlparse(unquote(url))
+        path_segments = [s for s in parsed.path.split("/") if s and len(s) > 2]
+        
+        # 1. Amazon: .../Product-Title/dp/B0...
+        amz = re.search(r"/([^/?]+)/dp/", parsed.path, re.I)
+        if amz:
+            slug = amz.group(1).replace("-", " ")
+            return " ".join([w.capitalize() for w in slug.split() if w.lower() not in ["gp", "product"]])
 
-        resp = requests.get(target_url, headers=headers, timeout=15)
+        # 2. Flipkart / Nykaa / Ajio: .../product-title/p/...
+        p_pattern = re.search(r"/([^/?]+)/p(?:/|$)", parsed.path, re.I)
+        if p_pattern:
+            slug = p_pattern.group(1).replace("-", " ")
+            return " ".join([w.capitalize() for w in slug.split() if not w.isdigit()])
+
+        # 3. Myntra: .../category/brand/product-name/12345/buy
+        if "myntra" in parsed.netloc:
+            for seg in reversed(path_segments):
+                if not seg.isdigit() and seg.lower() != "buy":
+                    slug = seg.replace("-", " ")
+                    return " ".join([w.capitalize() for w in slug.split()])
+
+        # 4. Shopify / D2C Brands (Snitch, boAt, Mamaearth): .../products/product-name
+        if "products" in path_segments:
+            idx = path_segments.index("products")
+            if idx + 1 < len(path_segments):
+                slug = path_segments[idx + 1].replace("-", " ")
+                return " ".join([w.capitalize() for w in slug.split()])
+
+        # 5. Generic fallback to longest segment in path
+        if path_segments:
+            candidate = max(path_segments, key=len).replace("-", " ").replace("_", " ")
+            cleaned = " ".join([w.capitalize() for w in candidate.split() if not w.isdigit() and len(w) > 2])
+            if len(cleaned) > 5:
+                return cleaned
+    except Exception:
+        pass
+    return ""
+
+
+def scrape_universal_url(url: str) -> Tuple[str, float]:
+    """Universal parser using public headless proxies."""
+    extracted_title = extract_universal_title_from_url(url)
+    extracted_price = 0.0
+
+    # Step 1: OpenGraph & Metadata Reader
+    try:
+        micro_url = f"https://api.microlink.io/?url={url}"
+        resp = requests.get(micro_url, timeout=8)
         if resp.status_code == 200:
-            soup = BeautifulSoup(resp.content, "html.parser")
-
-            # Amazon Selectors
-            t_tag = soup.find("span", {"id": "productTitle"})
-            if t_tag:
-                title = t_tag.get_text(strip=True)
-
-            p_tag = soup.find("span", {"class": "a-price-whole"})
-            if p_tag:
-                clean_p = re.sub(r"[^\d.]", "", p_tag.get_text())
-                if clean_p:
-                    price = float(clean_p)
-
-            # Flipkart Selectors (Fallback)
-            if not title:
-                f_title = soup.find("span", {"class": "B_NuCI"}) or soup.find("h1", {"class": "VU-ZEz"})
-                if f_title:
-                    title = f_title.get_text(strip=True)
-
-            if price == 0.0:
-                f_price = soup.find("div", {"class": "_30jeq3 _16Jk6d"}) or soup.find("div", {"class": "Nx9bqj CxhGGd"})
-                if f_price:
-                    clean_p = re.sub(r"[^\d.]", "", f_price.get_text())
-                    if clean_p:
-                        price = float(clean_p)
+            data = resp.json().get("data", {})
+            meta_title = data.get("title", "")
+            if meta_title:
+                meta_title = re.sub(r"(\|\s*Buy\s*Online.*$|:\s*Amazon\.in.*$|\|\s*Myntra.*$|\|\s*Nykaa.*$|\|\s*Flipkart.*$)", "", meta_title, flags=re.I).strip()
+                if not extracted_title or len(meta_title) > len(extracted_title):
+                    extracted_title = meta_title
     except Exception:
         pass
 
-    return title, price
+    # Step 2: Rendered Cloud Markdown Reader for INR Prices
+    try:
+        jina_url = f"https://r.jina.ai/{url}"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        j_resp = requests.get(jina_url, headers=headers, timeout=12)
+        if j_resp.status_code == 200:
+            text = j_resp.text
+
+            if not extracted_title:
+                h1_match = re.search(r"^#\s+(.+)$", text, re.MULTILINE)
+                if h1_match:
+                    extracted_title = h1_match.group(1).strip()
+
+            price_patterns = [
+                r"[₹|INR]\s?([\d,]+(?:\.\d{2})?)",
+                r"(?:Rs\.?|Price:?|Final Price:?)\s*([0-9]{1,3}(?:,[0-9]{2,3})*(?:\.[0-9]{2})?)"
+            ]
+            for pat in price_patterns:
+                matches = re.findall(pat, text, re.I)
+                if matches:
+                    for m in matches:
+                        try:
+                            p_val = float(m.replace(",", ""))
+                            if 99.0 <= p_val <= 1000000.0:
+                                extracted_price = p_val
+                                break
+                        except Exception:
+                            continue
+                if extracted_price > 0.0:
+                    break
+    except Exception:
+        pass
+
+    return extracted_title, extracted_price
+
+
+def auto_detect_hs_code(title: str) -> str:
+    """Matches product title to the closest Nepal Customs HS Code."""
+    t = title.lower()
+    # Electronics
+    if any(k in t for k in ["laptop", "macbook", "thinkpad", "notebook"]):
+        return "8471.30"
+    if any(k in t for k in ["iphone", "smartphone", "galaxy", "redmi", "oneplus", "phone"]):
+        return "8517.13"
+    if any(k in t for k in ["headphone", "earphone", "airpods", "buds", "earbuds", "speaker"]):
+        return "8518.30"
+    if any(k in t for k in ["smartwatch", "watch", "smart band"]):
+        return "9102.12"
+    if any(k in t for k in ["tv", "television", "monitor"]):
+        return "8528.72"
+    if any(k in t for k in ["mixer", "blender", "air fryer", "grinder", "cooker", "kettle", "toaster"]):
+        return "8509.40"
+    
+    # Fashion & Ethnic Wear
+    if any(k in t for k in ["saree", "sari", "kurta", "kurti", "lehenga", "anarkali", "ethnic", "dupatta"]):
+        return "6204.42"
+    if any(k in t for k in ["shirt", "t-shirt", "pant", "trousers", "hoodie", "dress", "jacket", "jeans"]):
+        return "6109.10"
+    if any(k in t for k in ["shoe", "sneaker", "sandal", "boots", "crocs", "loafers", "heels", "flats"]):
+        return "6404.11"
+    
+    # Beauty & Health
+    if any(k in t for k in ["serum", "lotion", "cream", "lipstick", "perfume", "shampoo", "sunscreen", "makeup"]):
+        return "3304.99"
+    if any(k in t for k in ["whey", "protein", "creatine", "vitamin", "bcaa", "supplement"]):
+        return "2106.10"
+    
+    # Books
+    if any(k in t for k in ["book", "novel", "paperback"]):
+        return "4901.99"
+        
+    return "9999.99"
 
 
 # =========================================================
 # 3. STREAMLIT USER INTERFACE
 # =========================================================
-st.set_page_config(page_title="Indo-Nepal Import Cost Agent", page_icon="🇳🇵", layout="wide")
+st.set_page_config(page_title="Indo-Nepal Universal Import Agent", page_icon="🇳🇵", layout="wide")
 
-st.title("🇳🇵 Indo-Nepal E-Commerce Import Agent")
-st.markdown("Calculate the complete landed cost from **Amazon India, Flipkart & Myntra** to Nepal with **Customs Duties, Freight, and 13% VAT**.")
+st.title("🇳🇵 Universal Indian E-Commerce Import Agent")
+st.markdown("Search any Indian online platform (**Amazon, Flipkart, Myntra, Nykaa, Ajio, Croma, Meesho, boAt, Snitch**) to calculate the complete landed cost in Nepal.")
+
+# Initialize Session States to keep fetched values safe across reruns
+if "product_name" not in st.session_state:
+    st.session_state.product_name = "Roadster Men Solid Casual Shirt"
+if "product_price" not in st.session_state:
+    st.session_state.product_price = 899.0
+if "platform_detected" not in st.session_state:
+    st.session_state.platform_detected = ""
 
 col_left, col_right = st.columns([1, 1], gap="large")
 
 with col_left:
-    st.subheader("1. Product & Shipping Details")
-    mode = st.radio("Input Method:", ["Paste Product Link", "Enter Details Manually"], horizontal=True)
-
-    default_title = "Puma Men's Running Shoes"
-    default_price = 3499.0
-    default_weight = 1.2
+    st.subheader("1. Search Product from India")
+    mode = st.radio("Choose Input Mode:", ["Paste Product Link", "Enter Details Manually"], horizontal=True)
 
     if mode == "Paste Product Link":
-        url_input = st.text_input("Paste Indian Product URL:", placeholder="https://www.amazon.in/dp/B0CX214GBN")
-        if url_input:
-            with st.spinner("Extracting product information..."):
-                scraped_title, scraped_price = scrape_indian_url(url_input)
-                if scraped_title:
-                    default_title = scraped_title
-                if scraped_price > 0:
-                    default_price = scraped_price
+        url_input = st.text_input(
+            "Paste Indian Product URL:", 
+            placeholder="Paste Amazon, Flipkart, Myntra, Nykaa, or Ajio link here..."
+        )
+        
+        # SEARCH BUTTON directly under the URL input
+        search_clicked = st.button("🔍 Search Product", type="primary", use_container_width=True)
 
-                if scraped_title and scraped_price > 0:
-                    st.success("✅ Extracted product details successfully!")
-                else:
-                    st.info("ℹ️ Enter the name and price below to calculate.")
+        if search_clicked:
+            if url_input.strip():
+                st.session_state.platform_detected = detect_platform(url_input)
+                with st.spinner(f"Searching and extracting details from {st.session_state.platform_detected}..."):
+                    scraped_title, scraped_price = scrape_universal_url(url_input)
+                    if scraped_title:
+                        st.session_state.product_name = scraped_title
+                    if scraped_price > 0:
+                        st.session_state.product_price = scraped_price
 
-    # Form inputs
-    prod_name = st.text_input("Product Title / Name:", value=default_title)
-    price_inr = st.number_input("Price in India (₹ INR):", min_value=1.0, value=float(default_price), step=100.0)
+                    if scraped_title or scraped_price > 0:
+                        st.success(f"✅ Found product on {st.session_state.platform_detected}!")
+                    else:
+                        st.info("ℹ️ Product found, but please verify the title and price below.")
+            else:
+                st.warning("⚠️ Please paste a link first.")
 
+        if st.session_state.platform_detected:
+            st.caption(f"🛍️ **Detected Platform:** `{st.session_state.platform_detected}`")
+
+    # Editable Product Inputs (pre-populated by search)
+    st.markdown("---")
+    st.markdown("##### Product Specifications")
+    prod_name = st.text_input("Product Title / Name:", value=st.session_state.product_name)
+    price_inr = st.number_input("Price in India (₹ INR):", min_value=1.0, value=float(st.session_state.product_price), step=100.0)
+
+    # Package Weights & Dimensions
     col_w, col_l, col_wi, col_h = st.columns(4)
     with col_w:
-        weight_kg = st.number_input("Weight (kg):", min_value=0.1, value=float(default_weight), step=0.1)
+        weight_kg = st.number_input("Weight (kg):", min_value=0.1, value=0.5, step=0.1)
     with col_l:
-        dim_l = st.number_input("Length (cm):", value=25.0, step=5.0)
+        dim_l = st.number_input("Length (cm):", value=20.0, step=5.0)
     with col_wi:
         dim_w = st.number_input("Width (cm):", value=15.0, step=5.0)
     with col_h:
-        dim_h = st.number_input("Height (cm):", value=10.0, step=5.0)
+        dim_h = st.number_input("Height (cm):", value=5.0, step=2.0)
 
+    # Customs Classification
     st.subheader("2. Customs Classification")
     detected_hs = auto_detect_hs_code(prod_name)
     all_hs = list(HS_DATABASE.keys())
@@ -242,7 +369,7 @@ with col_right:
     # 6. Total Landed Cost
     total_cost_npr = cif_npr + customs_duty_npr + excise_duty_npr + vat_npr + CLEARANCE_FEE_NPR
 
-    # Highlight Card
+    # Top Metric Card
     st.metric(
         label="Total Estimated Landed Cost in Nepal",
         value=f"Rs. {total_cost_npr:,.2f} NPR",
