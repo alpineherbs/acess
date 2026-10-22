@@ -1,5 +1,5 @@
 # Replace YOUR_SCRAPERAPI_KEY with your actual free API key from scraperapi.com
-SCRAPER_API_KEY = 34f6af46dd2237d85972a508370b8ae3
+SCRAPER_API_KEY = 
 
 def scrape_indian_url(url: str) -> Tuple[str, float, float]:
     """Fetches product title and price through a proxy that bypasses Amazon/Flipkart bot protection."""
