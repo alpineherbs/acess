@@ -246,9 +246,17 @@ with col_left:
     default_title = "Puma Men's Running Shoes"
     default_price = 3499.0
     default_weight = 1.2
-
-    if mode == "Paste Product Link":
+if mode == "Paste Product Link":
         product_url = st.text_input("Paste Indian Product Link:", placeholder="https://www.amazon.in/dp/B0CX214GBN")
         if product_url:
             with st.spinner("Extracting product information via proxy..."):
-                s_title, s_p
+                s_title, s_price, s_weight = scrape_indian_url(product_url)
+                if s_title:
+                    default_title = s_title
+                if s_price > 0:
+                    default_price = s_price
+
+                if s_title and s_price > 0:
+                    st.success("✅ Extracted product details successfully!")
+                else:
+                    st.info("ℹ️ Enter the name and price below if the link could not be automatically parsed.")
