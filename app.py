@@ -198,5 +198,5 @@ with col_left:
                 
                 if scraped_title and scraped_price > 0:
                     st.success("✅ Extracted product details successfully!")
-                else:
-    st.info("ℹ️ Enter the name and price below to calculate.")
+    else:
+    pass
