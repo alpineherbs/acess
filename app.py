@@ -122,7 +122,8 @@ else:
         pdf.cell(sum(col_widths[:7]), 8, "Total Outstanding:", border=1, align="R")
         pdf.cell(col_widths[7], 8, f"{total_sum:,.2f}", border=1, align="R")
         
-        return pdf.output()
+        # Output as bytes for Streamlit download button compatibility
+        return pdf.output().encode('latin1')
 
     # PDF Download Button
     if not display_df.empty:
