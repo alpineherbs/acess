@@ -11,13 +11,14 @@ st.set_page_config(
 )
 
 st.title("📊 Alpine Herbs Pvt. Ltd. — Client Ledger Dashboard")
-st.caption("Repository B: Live Party Outstanding & Recovery Tracking System")
+st.caption("Repository B: Live Party Outstanding & Recovery Tracking System (Swift Refresh Active)")
 
 # Google Sheet CSV Export Link (Real-Time Sync)
 SHEET_ID = "1cpPYFS9EkajB5tGfMnReIJ71cmB5djz6oaMvvEoqs6A"
 CSV_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv"
 
-@st.cache_data(ttl=5)
+# Swift refresh cache (1-second TTL for instantaneous sync)
+@st.cache_data(ttl=1)
 def load_data():
     return pd.read_csv(CSV_URL)
 
@@ -35,12 +36,19 @@ else:
     if "Outstanding Cash (NRs)" in df.columns:
         df["Outstanding Cash (NRs)"] = pd.to_numeric(df["Outstanding Cash (NRs)"], errors="coerce").fillna(0.0)
 
-    # Collapsible Sidebar Filters using st.sidebar.expander
+    # Sidebar with Robust Expandable Filter Section
     with st.sidebar:
         st.header("⚙️ Controls")
         
-        # Collapsible filter dropdown
-        with st.expander("🔍 Filter Controls", expanded=False):
+        # Manual Refresh Button for Instant Sync
+        if st.button("⚡ Force Swift Refresh", use_container_width=True):
+            st.cache_data.clear()
+            st.rerun()
+
+        st.markdown("---")
+
+        # Collapsible filter expander (set expanded=True initially so it's clearly interactive)
+        with st.expander("🔍 Filter Controls", expanded=True):
             categories = df["Category / Status"].dropna().unique().tolist() if "Category / Status" in df.columns else []
             category_filter = st.multiselect("Category / Status", options=categories, default=categories)
             
