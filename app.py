@@ -2,87 +2,82 @@ import streamlit as st
 import pandas as pd
 from streamlit_gsheets import GSheetsConnection
 
-# Page Layout Configuration
 st.set_page_config(
-    page_title="Client Ledger Statement (Repo B)",
+    page_title="Alpine Herbs — Party Ledger Dashboard",
     page_icon="📊",
     layout="wide"
 )
 
-st.title("📊 Client Ledger & Statement System")
-st.caption("Repository B: Live Client Statement & Ledger Viewer")
+st.title("📊 Alpine Herbs Pvt. Ltd. — Client Ledger Dashboard")
+st.caption("Repository B: Live Party Outstanding & Recovery Tracking System")
 
-# Connect to Google Sheets
+# Connect to Central Google Sheet
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# Load data with caching (refreshes every 10 seconds)
 @st.cache_data(ttl=10)
-def load_ledger_data():
+def load_data():
     return conn.read(ttl="10s")
 
 try:
-    df = load_ledger_data()
+    df = load_data()
 except Exception as e:
-    st.error(f"⚠️ Failed to connect to Google Sheets. Please verify your secrets configuration. Details: {e}")
+    st.error(f"⚠️ Failed to connect to Google Sheet: {e}")
     st.stop()
 
 if df.empty:
-    st.info("📌 The ledger spreadsheet is currently empty. Entries from Repository A will appear here automatically.")
-elif "Client Code" not in df.columns:
-    st.error("❌ The column 'Client Code' was not found in your spreadsheet. Please check your sheet headers.")
+    st.info("📌 The ledger spreadsheet is currently empty.")
 else:
-    # Clean data types
-    df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
-    df["Units"] = pd.to_numeric(df["Units"], errors="coerce").fillna(0)
-    df["Transaction Amount"] = pd.to_numeric(df["Transaction Amount"], errors="coerce").fillna(0.0)
-
-    # Sidebar Selection for Clients
-    client_list = sorted(df["Client Code"].dropna().astype(str).unique().tolist())
+    # Sidebar Filters
+    st.sidebar.header("🔍 Filters")
+    category_filter = st.sidebar.multiselect(
+        "Category / Status", 
+        options=df["Category / Status"].dropna().unique().tolist(),
+        default=df["Category / Status"].dropna().unique().tolist()
+    )
     
-    st.sidebar.header("🔍 Client Filter")
-    selected_client = st.sidebar.selectbox("Select Client Code", options=client_list)
+    district_filter = st.sidebar.multiselect(
+        "District / Area",
+        options=df["District / Area"].dropna().unique().tolist(),
+        default=df["District / Area"].dropna().unique().tolist()
+    )
 
-    # Filter records for selected client code
-    client_df = df[df["Client Code"].astype(str) == selected_client].copy()
-    client_df = client_df.sort_values(by="Date", ascending=True)
+    filtered_df = df[
+        df["Category / Status"].isin(category_filter) & 
+        df["District / Area"].isin(district_filter)
+    ]
 
-    # Compute Running Balance
-    client_df["Running Balance"] = client_df["Transaction Amount"].cumsum()
+    # Client Code Selector
+    client_list = ["ALL CLIENTS"] + sorted(filtered_df["Client Code"].dropna().astype(str).unique().tolist())
+    selected_client = st.sidebar.selectbox("Select Client Code / Party", options=client_list)
 
-    # Main Dashboard Header
-    st.subheader(f"📋 Ledger Statement for Client Code: `{selected_client}`")
+    if selected_client != "ALL CLIENTS":
+        display_df = filtered_df[filtered_df["Client Code"].astype(str) == selected_client]
+    else:
+        display_df = filtered_df
 
-    # Metrics Summary Row
-    total_units = int(client_df["Units"].sum())
-    total_amount = client_df["Transaction Amount"].sum()
-    total_entries = len(client_df)
+    # Summary Metrics
+    total_outstanding = display_df["Outstanding Cash (NRs)"].sum()
+    total_parties = len(display_df)
+    bad_debt_total = display_df[display_df["Category / Status"] == "Bad Debt / Recovery"]["Outstanding Cash (NRs)"].sum()
 
-    m1, m2, m3 = st.columns(3)
-    m1.metric("Total Transactions", f"{total_entries}")
-    m2.metric("Total Volume / Units", f"{total_units:,}")
-    m3.metric("Cumulative Balance", f"NRs / Rs {total_amount:,.2f}")
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Total Parties Filtered", f"{total_parties}")
+    col2.metric("Total Outstanding Cash", f"NRs {total_outstanding:,.2f}")
+    col3.metric("Bad Debt / Recovery Amount", f"NRs {bad_debt_total:,.2f}")
 
     st.markdown("---")
 
-    # Format dataframe for clean presentation
-    display_df = client_df.copy()
-    display_df["Date"] = display_df["Date"].dt.strftime("%Y-%m-%d")
+    # Display Table
+    cols_to_show = ["Date", "Client Code", "District / Area", "Category / Status", "Party Name", "Address", "Mobile No.", "Outstanding Cash (NRs)", "Notes / Status"]
+    avail_cols = [c for c in cols_to_show if c in display_df.columns]
 
-    columns_to_display = ["Date", "Client Code", "Client Name", "Units", "Transaction Amount", "Running Balance", "Notes"]
-    available_columns = [col for col in columns_to_display if col in display_df.columns]
+    st.dataframe(display_df[avail_cols], use_container_width=True, hide_index=True)
 
-    # Render Data Table
-    st.dataframe(
-        display_df[available_columns],
-        use_container_width=True,
-        hide_index=True
-    )
-
-    # Export / Download Button
-    csv_export = display_df[available_columns].to_csv(index=False).encode('utf-8')
+    # Export Button
+    csv = display_df[avail_cols].to_csv(index=False).encode('utf-8')
     st.download_button(
-        label=f"📥 Download Ledger for {selected_client} (CSV)",
-        data=csv_export,
-        file_name=f"ledger_{selected_client}.csv",
+        label="📥 Download Current Selection (CSV)",
+        data=csv,
+        file_name="alpine_herbs_filtered_ledger.csv",
         mime="text/csv"
     )
