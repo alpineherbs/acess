@@ -83,7 +83,7 @@ else:
 
     st.dataframe(display_df[avail_cols], use_container_width=True, hide_index=True)
 
-    # PDF Generation Function using Temp File
+    # Robust PDF Generation Function using Temp File
     def generate_pdf(dataframe, client_title):
         pdf = FPDF(orientation='L', unit='mm', format='A4')
         pdf.add_page()
@@ -124,7 +124,7 @@ else:
         pdf.cell(sum(col_widths[:7]), 8, "Total Outstanding:", border=1, align="R")
         pdf.cell(col_widths[7], 8, f"{total_sum:,.2f}", border=1, align="R")
         
-        # Save to temp file and read bytes
+        # Save to secure temporary file and read back as raw bytes
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
             tmp_name = tmp.name
         
@@ -145,4 +145,3 @@ else:
             file_name=f"alpine_herbs_ledger_{selected_client}.pdf",
             mime="application/pdf"
         )
-        
