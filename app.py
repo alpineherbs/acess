@@ -1,6 +1,8 @@
 import streamlit as st
 import pandas as pd
 from fpdf import FPDF
+import tempfile
+import os
 
 st.set_page_config(
     page_title="Alpine Herbs — Party Ledger Dashboard",
@@ -81,7 +83,7 @@ else:
 
     st.dataframe(display_df[avail_cols], use_container_width=True, hide_index=True)
 
-    # PDF Generation Function
+    # PDF Generation Function using Temp File
     def generate_pdf(dataframe, client_title):
         pdf = FPDF(orientation='L', unit='mm', format='A4')
         pdf.add_page()
@@ -122,8 +124,17 @@ else:
         pdf.cell(sum(col_widths[:7]), 8, "Total Outstanding:", border=1, align="R")
         pdf.cell(col_widths[7], 8, f"{total_sum:,.2f}", border=1, align="R")
         
-        # Output as bytes for Streamlit download button compatibility
-        return pdf.output().encode('latin1')
+        # Save to temp file and read bytes
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+            tmp_name = tmp.name
+        
+        pdf.output(tmp_name)
+        
+        with open(tmp_name, "rb") as f:
+            pdf_bytes = f.read()
+            
+        os.unlink(tmp_name)
+        return pdf_bytes
 
     # PDF Download Button
     if not display_df.empty:
@@ -134,3 +145,4 @@ else:
             file_name=f"alpine_herbs_ledger_{selected_client}.pdf",
             mime="application/pdf"
         )
+        
