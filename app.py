@@ -1,9 +1,8 @@
 import streamlit as st
 import pandas as pd
-from github import Github
-import json
+from streamlit_gsheets import GSheetsConnection
 
-# Set Page Configuration
+# Page Layout Configuration
 st.set_page_config(
     page_title="Client Ledger Statement (Repo B)",
     page_icon="📊",
@@ -11,125 +10,79 @@ st.set_page_config(
 )
 
 st.title("📊 Client Ledger & Statement System")
-st.caption("Repository B: Real-time ledger updates mapped by Client Code")
+st.caption("Repository B: Live Client Statement & Ledger Viewer")
 
-# Check if Secrets are configured
-if "GITHUB_TOKEN" not in st.secrets or "GITHUB_REPO" not in st.secrets:
-    st.error("🔑 GitHub secrets are missing!")
-    st.info(
-        """
-        **How to fix this in Streamlit Cloud:**
-        1. Go to your **Streamlit Cloud Dashboard**.
-        2. Click the 3 dots (**...**) next to this app > **Settings** > **Secrets**.
-        3. Paste the following snippet with your actual details:
-        
-        ```toml
-        GITHUB_TOKEN = "your_github_token_here"
-        GITHUB_REPO = "your-username/your-repo-name"
-        DATA_FILE_PATH = "data/ledger_data.json"
-        ```
-        4. Click **Save**.
-        """
-    )
+# Connect to Google Sheets
+conn = st.connection("gsheets", type=GSheetsConnection)
+
+# Load data with caching (refreshes every 10 seconds)
+@st.cache_data(ttl=10)
+def load_ledger_data():
+    return conn.read(ttl="10s")
+
+try:
+    df = load_ledger_data()
+except Exception as e:
+    st.error(f"⚠️ Failed to connect to Google Sheets. Please verify your secrets configuration. Details: {e}")
     st.stop()
 
-# Initialize GitHub connection
-@st.cache_resource
-def get_github_repo():
-    try:
-        g = Github(st.secrets["GITHUB_TOKEN"])
-        return g.get_repo(st.secrets["GITHUB_REPO"])
-    except Exception as e:
-        st.error(f"Failed to connect to GitHub repository: {e}")
-        return None
-
-# Fetch Ledger JSON file from GitHub
-@st.cache_data(ttl=30)  # Auto refresh every 30 seconds
-def fetch_ledger_data():
-    repo = get_github_repo()
-    if repo is None:
-        return pd.DataFrame()
-    
-    file_path = st.secrets.get("DATA_FILE_PATH", "data/ledger_data.json")
-    try:
-        file_content = repo.get_contents(file_path)
-        data = json.loads(file_content.decoded_content.decode("utf-8"))
-        df = pd.DataFrame(data)
-        
-        if not df.empty:
-            df["date"] = pd.to_datetime(df["date"])
-            df["units"] = pd.to_numeric(df["units"], errors="coerce").fillna(0)
-            df["amount"] = pd.to_numeric(df["amount"], errors="coerce").fillna(0.0)
-            df = df.sort_values(by="date", ascending=True)
-        return df
-    except Exception:
-        return pd.DataFrame()
-
-# Refresh header
-col_title, col_btn = st.columns([4, 1])
-with col_btn:
-    if st.button("🔄 Refresh Data"):
-        st.cache_data.clear()
-        st.rerun()
-
-# Load Data
-df_ledger = fetch_ledger_data()
-
-if df_ledger.empty:
-    st.info("📌 No ledger entries found yet in `data/ledger_data.json`. Once reports are submitted via Repository A, client statements will appear here.")
+if df.empty:
+    st.info("📌 The ledger spreadsheet is currently empty. Entries from Repository A will appear here automatically.")
+elif "Client Code" not in df.columns:
+    st.error("❌ The column 'Client Code' was not found in your spreadsheet. Please check your sheet headers.")
 else:
-    # Extract Client Codes
-    client_list = sorted(df_ledger["client_code"].dropna().unique().tolist())
+    # Clean data types
+    df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+    df["Units"] = pd.to_numeric(df["Units"], errors="coerce").fillna(0)
+    df["Transaction Amount"] = pd.to_numeric(df["Transaction Amount"], errors="coerce").fillna(0.0)
+
+    # Sidebar Selection for Clients
+    client_list = sorted(df["Client Code"].dropna().astype(str).unique().tolist())
     
-    # Sidebar Client Selector
-    st.sidebar.header("Client Selection")
+    st.sidebar.header("🔍 Client Filter")
     selected_client = st.sidebar.selectbox("Select Client Code", options=client_list)
-    
-    # Filter for selected client
-    client_df = df_ledger[df_ledger["client_code"] == selected_client].copy()
-    
-    # Calculate Running Balance
-    client_df["running_balance"] = client_df["amount"].cumsum()
-    
-    st.subheader(f"📋 Statement for Client: `{selected_client}`")
-    
-    # Overview Metrics
-    total_units = int(client_df["units"].sum())
-    total_amount = client_df["amount"].sum()
-    entry_count = len(client_df)
-    
+
+    # Filter records for selected client code
+    client_df = df[df["Client Code"].astype(str) == selected_client].copy()
+    client_df = client_df.sort_values(by="Date", ascending=True)
+
+    # Compute Running Balance
+    client_df["Running Balance"] = client_df["Transaction Amount"].cumsum()
+
+    # Main Dashboard Header
+    st.subheader(f"📋 Ledger Statement for Client Code: `{selected_client}`")
+
+    # Metrics Summary Row
+    total_units = int(client_df["Units"].sum())
+    total_amount = client_df["Transaction Amount"].sum()
+    total_entries = len(client_df)
+
     m1, m2, m3 = st.columns(3)
-    m1.metric("Total Transactions", f"{entry_count}")
+    m1.metric("Total Transactions", f"{total_entries}")
     m2.metric("Total Volume / Units", f"{total_units:,}")
-    m3.metric("Cumulative Amount", f"NPR / Rs {total_amount:,.2f}")
-    
+    m3.metric("Cumulative Balance", f"NRs / Rs {total_amount:,.2f}")
+
     st.markdown("---")
-    
-    # Prepare Table for Display
+
+    # Format dataframe for clean presentation
     display_df = client_df.copy()
-    display_df["date"] = display_df["date"].dt.strftime("%Y-%m-%d")
-    
-    display_df = display_df.rename(columns={
-        "date": "Date",
-        "client_code": "Client Code",
-        "units": "Units / Quantity",
-        "amount": "Transaction Amount",
-        "running_balance": "Running Balance",
-        "notes": "Notes / Remarks"
-    })
-    
+    display_df["Date"] = display_df["Date"].dt.strftime("%Y-%m-%d")
+
+    columns_to_display = ["Date", "Client Code", "Client Name", "Units", "Transaction Amount", "Running Balance", "Notes"]
+    available_columns = [col for col in columns_to_display if col in display_df.columns]
+
     # Render Data Table
     st.dataframe(
-        display_df[["Date", "Client Code", "Units / Quantity", "Transaction Amount", "Running Balance", "Notes / Remarks"]],
+        display_df[available_columns],
         use_container_width=True,
         hide_index=True
     )
-    
-    # Download Ledger
-    csv_data = display_df.to_csv(index=False).encode('utf-8')
+
+    # Export / Download Button
+    csv_export = display_df[available_columns].to_csv(index=False).encode('utf-8')
     st.download_button(
-        label=f"📥 Download {selected_client} Ledger CSV",
-        data=csv_data,
+        label=f"📥 Download Ledger for {selected_client} (CSV)",
+        data=csv_export,
         file_name=f"ledger_{selected_client}.csv",
         mime="text/csv"
     )
