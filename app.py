@@ -35,17 +35,19 @@ else:
     if "Outstanding Cash (NRs)" in df.columns:
         df["Outstanding Cash (NRs)"] = pd.to_numeric(df["Outstanding Cash (NRs)"], errors="coerce").fillna(0.0)
 
-    # Sidebar Filters (Collapsible via sidebar arrow)
+    # Collapsible Sidebar Filters using st.sidebar.expander
     with st.sidebar:
-        st.header("🔍 Filters & Controls")
+        st.header("⚙️ Controls")
         
-        categories = df["Category / Status"].dropna().unique().tolist() if "Category / Status" in df.columns else []
-        category_filter = st.multiselect("Category / Status", options=categories, default=categories)
-        
-        districts = df["District / Area"].dropna().unique().tolist() if "District / Area" in df.columns else []
-        district_filter = st.multiselect("District / Area", options=districts, default=districts)
+        # Collapsible filter dropdown
+        with st.expander("🔍 Filter Controls", expanded=False):
+            categories = df["Category / Status"].dropna().unique().tolist() if "Category / Status" in df.columns else []
+            category_filter = st.multiselect("Category / Status", options=categories, default=categories)
+            
+            districts = df["District / Area"].dropna().unique().tolist() if "District / Area" in df.columns else []
+            district_filter = st.multiselect("District / Area", options=districts, default=districts)
 
-    if categories or districts:
+    if 'category_filter' in locals() and categories:
         filtered_df = df[
             df["Category / Status"].isin(category_filter) & 
             df["District / Area"].isin(district_filter)
@@ -83,7 +85,7 @@ else:
 
     st.dataframe(display_df[avail_cols], use_container_width=True, hide_index=True)
 
-    # Robust PDF Generation Function using Temp File
+    # PDF Generation Function using Temp File
     def generate_pdf(dataframe, client_title):
         pdf = FPDF(orientation='L', unit='mm', format='A4')
         pdf.add_page()
