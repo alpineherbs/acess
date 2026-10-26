@@ -11,24 +11,20 @@ st.set_page_config(
 st.title("📊 Alpine Herbs Pvt. Ltd. — Client Ledger Dashboard")
 st.caption("Repository B: Live Party Outstanding & Recovery Tracking System")
 
-# Establish connection with explicit spreadsheet fallback
+# Establish connection
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 @st.cache_data(ttl=10)
 def load_data():
-    # Pass spreadsheet URL explicitly if secrets lookup fails
+    # Explicitly pass the spreadsheet URL directly in read() to bypass TOML secret key errors
     sheet_url = "https://docs.google.com/spreadsheets/d/1cpPYFS9EkajB5tGfMnReIJ71cmB5djz6oaMvvEoqs6A/edit"
-    try:
-        return conn.read(spreadsheet=sheet_url, ttl="10s")
-    except TypeError:
-        # Fallback for standard secret reading if spreadsheet keyword is unneeded
-        return conn.read(ttl="10s")
+    return conn.read(spreadsheet=sheet_url, ttl="10s")
 
 try:
     df = load_data()
 except Exception as e:
     st.error(f"⚠️ Failed to connect to Google Sheet: {e}")
-    st.info("💡 Tip: Ensure your Google Sheet is shared as 'Anyone with the link can view' and your secrets TOML file has `[connections.gsheets]` configured correctly.")
+    st.info("💡 Tip: Ensure your Google Sheet sharing is set to **'Anyone with the link can view'**.")
     st.stop()
 
 if df.empty:
@@ -46,7 +42,7 @@ else:
     filtered_df = df[
         df["Category / Status"].isin(category_filter) & 
         df["District / Area"].isin(district_filter)
-    ] if not categories else df
+    ] if categories else df
 
     # Client Code Selector
     client_codes = sorted(filtered_df["Client Code"].dropna().astype(str).unique().tolist()) if "Client Code" in filtered_df.columns else []
