@@ -3,16 +3,17 @@ import pandas as pd
 import math
 from io import BytesIO
 
-# --- PAGE CONFIGURATION ---
+# --- PAGE SETUP ---
 st.set_page_config(
-    page_title="ALPINE HERBS | Master Audit Dashboard",
+    page_title="ALPINE HERBS | Client 360° Master Dashboard",
     page_icon="🌿",
     layout="wide"
 )
 
+# PUT YOUR ACTIVE SHEET ID HERE
 SHEET_ID = "1cpPYFS9EkajB5tGfMnReIJ71cmB5djz6oaMvvEoqs6A"
 
-# Refined Alpine Herbs Corporate Theme
+# --- BRANDING & STYLING ---
 st.markdown("""<style>
 #MainMenu, footer { visibility: hidden; }
 .block-container { 
@@ -27,6 +28,14 @@ st.markdown("""<style>
     color: white;
     margin-bottom: 1.2rem;
     box-shadow: 0 4px 12px rgba(13, 40, 24, 0.08);
+}
+.client-hero {
+    background: #F4FAF6;
+    border: 1px solid #B0D4BE;
+    border-left: 5px solid #164E33;
+    padding: 16px 20px;
+    border-radius: 8px;
+    margin-bottom: 1.2rem;
 }
 .kpi-card {
     background: #FFFFFF;
@@ -55,254 +64,64 @@ st.markdown("""<style>
 }
 </style>""", unsafe_allow_html=True)
 
-# --- SAFE STRING & NUMERIC PARSERS ---
-def clean_num(val):
-    if pd.isna(val) or val is None:
-        return 0.0
-    s = str(val).replace("Rs.", "").replace("Rs", "").replace(",", "").strip()
-    try:
-        v = float(s)
-        return 0.0 if (math.isnan(v) or math.isinf(v)) else v
-    except Exception:
-        return 0.0
+# --- MASTER CLIENT LEDGER (BARA & PARSA WITH OPENING DUES) ---
+MASTER_CLIENTS = [
+    # BARA DISTRICT
+    {"name": "Naresh Medical", "code": "BAR-001", "area": "Kalaiya", "district": "Bara", "phone": "9807267001", "dues": 3100},
+    {"name": "Mahir Health Clinic", "code": "BAR-002", "area": "Jeetpur", "district": "Bara", "phone": "9807100296", "dues": 8165},
+    {"name": "Dev Medical", "code": "BAR-003", "area": "Kalaiya", "district": "Bara", "phone": "9845227985", "dues": 1500},
+    {"name": "Nirajan Pharmacy", "code": "BAR-004", "area": "Bakuliya", "district": "Bara", "phone": "9804242586", "dues": 550},
+    {"name": "Hariom Medical", "code": "BAR-005", "area": "Kolvi", "district": "Bara", "phone": "9811229323", "dues": 2300},
+    {"name": "S.K.S Pharma", "code": "BAR-006", "area": "Parsauni", "district": "Bara", "phone": "", "dues": 1175},
+    {"name": "Aayan First Aid Center", "code": "BAR-007", "area": "Simara", "district": "Bara", "phone": "", "dues": 2060},
+    {"name": "Rupa Medical Hall", "code": "BAR-008", "area": "Simara", "district": "Bara", "phone": "", "dues": 5515},
+    {"name": "Sanjeevani Clinic", "code": "BAR-009", "area": "Simara", "district": "Bara", "phone": "9845130209", "dues": 2195},
+    {"name": "Ale Health Clinic", "code": "BAR-010", "area": "Ganj Bhawanipur", "district": "Bara", "phone": "", "dues": 1645},
+    {"name": "Alex Medical Hall", "code": "BAR-011", "area": "Bagrampur", "district": "Bara", "phone": "", "dues": 18000},
+    {"name": "Kaliyani Medical Hall", "code": "BAR-012", "area": "Kolvi", "district": "Bara", "phone": "", "dues": 15580},
+    {"name": "Shohalal Medical Hall", "code": "BAR-013", "area": "Ganj Bhawanipur", "district": "Bara", "phone": "9814286651", "dues": 7175},
+    {"name": "Everest Health Clinic", "code": "BAR-014", "area": "Kalaiya", "district": "Bara", "phone": "", "dues": 2635},
+    {"name": "Roman Surgical", "code": "BAR-015", "area": "Khopawa", "district": "Bara", "phone": "9821231370", "dues": 1660},
+    {"name": "Nimash Medical", "code": "BAR-016", "area": "Simara", "district": "Bara", "phone": "9845120836", "dues": 4620},
+    {"name": "Advance Poli Clinic", "code": "BAR-017", "area": "Raghunathpur", "district": "Bara", "phone": "9809153231", "dues": 4310},
+    {"name": "Prithvi Medical Hall", "code": "BAR-018", "area": "Jaitapur", "district": "Bara", "phone": "", "dues": 6745},
+    {"name": "Safe Life Hospital", "code": "BAR-019", "area": "Benauli", "district": "Bara", "phone": "", "dues": 740},
+    {"name": "Alina Health Clinic", "code": "BAR-020", "area": "Kalaiya", "district": "Bara", "phone": "", "dues": 8250},
+    {"name": "Hargendra Pande Medical", "code": "BAR-021", "area": "Rautahar", "district": "Bara", "phone": "", "dues": 500},
+    {"name": "Jungbahadur Medical", "code": "BAR-022", "area": "Bagrampur", "district": "Bara", "phone": "", "dues": 200},
+    {"name": "Aarabh Pharmacy", "code": "BAR-023", "area": "Nijgadh", "district": "Bara", "phone": "9855019764", "dues": 36725},
+    {"name": "Aarabh Pharmacy (Narayani)", "code": "BAR-024", "area": "Nijgadh", "district": "Bara", "phone": "9855019764", "dues": 25915},
+    {"name": "Sanniya Medical Hall", "code": "BAR-025", "area": "Jeetpur", "district": "Bara", "phone": "", "dues": 3460},
+    {"name": "Bala Ji Medical Hall", "code": "BAR-026", "area": "Aarnawa Chouk", "district": "Bara", "phone": "", "dues": 3195},
+    {"name": "Sapna Health Clinic", "code": "BAR-027", "area": "Bariyarpur", "district": "Bara", "phone": "", "dues": 1365},
+    {"name": "Gudi Pharmacy", "code": "BAR-028", "area": "Bariyarpur", "district": "Bara", "phone": "", "dues": 0},
+    {"name": "OM Shivsakti Pharmacy", "code": "BAR-029", "area": "Kalaiya", "district": "Bara", "phone": "", "dues": 3680},
 
-def money(val):
-    return f"Rs. {clean_num(val):,.2f}"
-
-def find_column(df, candidates):
-    """Case-insensitive, whitespace-tolerant column matcher."""
-    if df.empty:
-        return None
-    cols_map = {str(c).strip().lower(): c for c in df.columns}
-    for cand in candidates:
-        if cand.strip().lower() in cols_map:
-            return cols_map[cand.strip().lower()]
-    return None
-
-# --- RESILIENT DATA LOADER ---
-# Reads data as string first to prevent losing zero-padded codes, IDs, or invoice numbers
-def fetch_sheet_tab(tab_name_candidates):
-    for tab in tab_name_candidates:
-        url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={tab.replace(' ', '%20')}"
-        try:
-            df = pd.read_csv(url, dtype=str)
-            if not df.empty:
-                # Strip extra whitespaces from column headers
-                df.columns = [str(c).strip() for c in df.columns]
-                
-                # Remove unneeded 'Unnamed' empty columns
-                valid_cols = [c for c in df.columns if not (c.startswith("Unnamed:") and df[c].isna().all())]
-                df = df[valid_cols]
-                
-                # Drop rows where every single cell is empty/NaN
-                df = df.dropna(how="all", axis=0)
-                df = df[~df.apply(lambda row: row.astype(str).str.strip().eq("").all() or row.astype(str).str.strip().eq("nan").all(), axis=1)]
-                
-                if not df.empty:
-                    return df
-        except Exception:
-            continue
-    return pd.DataFrame()
-
-@st.cache_data(ttl=8)
-def load_all_records():
-    return {
-        "Sales": fetch_sheet_tab(["Sales"]),
-        "Collections": fetch_sheet_tab(["Collections", "Receipts", "Cash Collections"]),
-        "Returns": fetch_sheet_tab(["Returns", "Goods Return", "Goods Returns"]),
-        "Expenses": fetch_sheet_tab(["Expenses", "Operating Expenses"]),
-        "Advances": fetch_sheet_tab(["Staff Advances", "Advances", "Staff"])
-    }
-
-raw_data = load_all_records()
-sales_df = raw_data["Sales"].copy()
-col_df   = raw_data["Collections"].copy()
-ret_df   = raw_data["Returns"].copy()
-exp_df   = raw_data["Expenses"].copy()
-adv_df   = raw_data["Advances"].copy()
-
-# --- TOP HEADER BANNER ---
-st.markdown("""
-<div class="main-header">
-    <div style="display:flex; justify-content:space-between; align-items:center;">
-        <div>
-            <h2 style="margin:0; font-weight:800; font-size:1.5rem; color:#FFFFFF;">🌿 ALPINE HERBS PVT. LTD.</h2>
-            <div style="font-size:0.84rem; color:#D3E6DA; margin-top:2px;">
-                CENTRAL OPERATIONS AUDIT & LIVE MONITORING (REPOSITORY B) &nbsp;|&nbsp; BIRGUNJ, NEPAL
-            </div>
-        </div>
-    </div>
-</div>
-""", unsafe_allow_html=True)
-
-# --- SIDEBAR: REFRESH & SEARCH CONTROLS ---
-with st.sidebar:
-    st.markdown("### ⚙️ Live Controls")
-    if st.button("⚡ Force Live Refresh", use_container_width=True, type="primary"):
-        st.cache_data.clear()
-        st.rerun()
-
-    st.divider()
-    st.markdown("### 🔍 Filter Audit Data")
-
-    # Representative / MR Filter
-    mr_pool = []
-    for d in [sales_df, col_df, ret_df, exp_df, adv_df]:
-        c = find_column(d, ["MR Name", "Staff Name", "Personnel Name", "MR", "Rep Name"])
-        if c:
-            mr_pool.extend(d[c].dropna().astype(str).str.strip().tolist())
-    clean_mrs = sorted(list(set([m for m in mr_pool if m and m.lower() not in ("nan", "none", "")])))
-    sel_mr = st.selectbox("Filter by Representative", ["All Staff / MRs"] + clean_mrs)
-
-    # Date Filter
-    date_pool = []
-    for d in [sales_df, col_df, ret_df, exp_df, adv_df]:
-        c = find_column(d, ["Date (A.D.)", "Date", "A.D. Date", "Date(A.D.)"])
-        if c:
-            date_pool.extend(d[c].dropna().astype(str).str.strip().tolist())
-    clean_dates = sorted(list(set([dt for dt in date_pool if dt and dt.lower() not in ("nan", "none", "")])), reverse=True)
-    sel_date = st.selectbox("Filter by Date (A.D.)", ["All Dates"] + clean_dates)
-
-    # Free-text Search Filter
-    query = st.text_input("Search (Invoice, Chemist, Town)", placeholder="e.g. Naresh, INV-01").strip().lower()
-
-# --- FILTERING FUNCTION ---
-def filter_df(df):
-    if df.empty:
-        return df
-    filtered = df.copy()
-
-    # Apply MR filter
-    if sel_mr != "All Staff / MRs":
-        c_mr = find_column(filtered, ["MR Name", "Staff Name", "Personnel Name", "MR", "Rep Name"])
-        if c_mr:
-            filtered = filtered[filtered[c_mr].astype(str).str.strip() == sel_mr]
-
-    # Apply Date filter
-    if sel_date != "All Dates":
-        c_dt = find_column(filtered, ["Date (A.D.)", "Date", "A.D. Date", "Date(A.D.)"])
-        if c_dt:
-            filtered = filtered[filtered[c_dt].astype(str).str.strip() == sel_date]
-
-    # Apply Global Text Search
-    if query:
-        mask = filtered.apply(lambda row: row.astype(str).str.lower().str.contains(query, regex=False).any(), axis=1)
-        filtered = filtered[mask]
-
-    return filtered
-
-f_sales = filter_df(sales_df)
-f_col   = filter_df(col_df)
-f_ret   = filter_df(ret_df)
-f_exp   = filter_df(exp_df)
-f_adv   = filter_df(adv_df)
-
-# --- RECONCILIATION TOTALS (MATCHING REPO A EXACT FORMULAS) ---
-# 1. Sales
-col_stot  = find_column(f_sales, ["Total Sale (Rs.)", "Total Sale", "Total Billed", "Total", "total_sale"])
-col_scash = find_column(f_sales, ["Cash Recd (Rs.)", "Cash Collected", "Cash Recd", "cash_collected", "Cash"])
-col_scred = find_column(f_sales, ["Credit Given (Rs.)", "Credit Given", "Credit", "credit_given"])
-
-tot_sales_val  = f_sales[col_stot].apply(clean_num).sum() if col_stot else 0.0
-tot_sales_cash = f_sales[col_scash].apply(clean_num).sum() if col_scash else 0.0
-tot_sales_cred = f_sales[col_scred].apply(clean_num).sum() if col_scred else 0.0
-
-# 2. Collections / Receipts
-col_camt = find_column(f_col, ["Amount Collected (Rs.)", "Amount Collected", "Amount", "amount"])
-tot_rec_cash = f_col[col_camt].apply(clean_num).sum() if col_camt else 0.0
-
-# 3. Goods Returns
-col_rtot = find_column(f_ret, ["Total Return (Rs.)", "Total Value", "Total Return", "Total", "total", "Amount"])
-tot_returns = f_ret[col_rtot].apply(clean_num).sum() if col_rtot else 0.0
-
-# 4. Outflows
-col_eamt = find_column(f_exp, ["Amount (Rs.)", "Amount", "amount"])
-tot_expenses = f_exp[col_eamt].apply(clean_num).sum() if col_eamt else 0.0
-
-col_aamt = find_column(f_adv, ["Amount (Rs.)", "Amount", "amount"])
-tot_advances = f_adv[col_aamt].apply(clean_num).sum() if col_aamt else 0.0
-
-# Cash balance logic from Repo A
-total_gross_cash = tot_sales_cash + tot_rec_cash
-total_outflow    = tot_expenses + tot_advances
-net_cash_balance = total_gross_cash - total_outflow
-
-# --- FINANCIAL KPI ROW ---
-k1, k2, k3, k4, k5 = st.columns(5)
-with k1:
-    st.markdown(f"""<div class="kpi-card">
-        <div class="kpi-title">🛒 Total Billed Sales</div>
-        <div class="kpi-value">{money(tot_sales_val)}</div>
-        <div class="kpi-sub">Direct Cash: {money(tot_sales_cash)}</div>
-    </div>""", unsafe_allow_html=True)
-with k2:
-    st.markdown(f"""<div class="kpi-card" style="border-top-color:#2D7D52;">
-        <div class="kpi-title">💵 Total Cash Recd</div>
-        <div class="kpi-value" style="color:#164E33;">{money(total_gross_cash)}</div>
-        <div class="kpi-sub">Receipt Dues: {money(tot_rec_cash)}</div>
-    </div>""", unsafe_allow_html=True)
-with k3:
-    st.markdown(f"""<div class="kpi-card" style="border-top-color:#A04000;">
-        <div class="kpi-title">📑 Credit Outstanding</div>
-        <div class="kpi-value" style="color:#A04000;">{money(tot_sales_cred)}</div>
-        <div class="kpi-sub">Returns Value: {money(tot_returns)}</div>
-    </div>""", unsafe_allow_html=True)
-with k4:
-    st.markdown(f"""<div class="kpi-card" style="border-top-color:#800000;">
-        <div class="kpi-title">🏢 Total Disbursed</div>
-        <div class="kpi-value" style="color:#800000;">{money(total_outflow)}</div>
-        <div class="kpi-sub">Ops: {money(tot_expenses)} | Adv: {money(tot_advances)}</div>
-    </div>""", unsafe_allow_html=True)
-with k5:
-    net_col = "#0D2818" if net_cash_balance >= 0 else "#900C3F"
-    st.markdown(f"""<div class="kpi-card" style="border-top-color:{net_col}; background:#F4FAF6;">
-        <div class="kpi-title">💰 Net Cash Balance</div>
-        <div class="kpi-value" style="color:{net_col};">{money(net_cash_balance)}</div>
-        <div class="kpi-sub">Closing Cash in Hand</div>
-    </div>""", unsafe_allow_html=True)
-
-st.write("")
-
-# --- TABLE RENDERER ---
-def show_section(df, tab_name, description):
-    st.markdown(f"##### {description}")
-    if not df.empty:
-        # Display table preserving all original columns entered in Repo A
-        st.dataframe(df, use_container_width=True, hide_index=True)
-        
-        # CSV Export Option
-        buf = BytesIO()
-        df.to_csv(buf, index=False)
-        st.download_button(
-            label=f"📥 Download {tab_name} ({len(df)} rows)",
-            data=buf.getvalue(),
-            file_name=f"{tab_name.lower().replace(' ', '_')}_export.csv",
-            mime="text/csv",
-            key=f"dl_{tab_name}"
-        )
-    else:
-        st.info(f"ℹ️ No records found for '{tab_name}'. If data was just submitted from Repo A, click '⚡ Force Live Refresh' in the sidebar.")
-
-# --- TABS FOR ALL 5 FEEDS ---
-t1, t2, t3, t4, t5 = st.tabs([
-    f"🛒 1. Sales Ledger ({len(f_sales)})",
-    f"💵 2. Dues Collections ({len(f_col)})",
-    f"🔄 3. Goods Return ({len(f_ret)})",
-    f"🏢 4. Operating Expenses ({len(f_exp)})",
-    f"👥 5. Staff Advances ({len(f_adv)})"
-])
-
-with t1:
-    show_section(f_sales, "Sales", "Invoiced Product Sales, Promotional FOC, & Cash/Credit Ledger")
-
-with t2:
-    show_section(f_col, "Collections", "Customer Payment Receipts & Recovered Dues")
-
-with t3:
-    show_section(f_ret, "Returns", "Client Returned Stock, Near Expiry, & Breakages")
-
-with t4:
-    show_section(f_exp, "Expenses", "Route Operational Expenses & Fuel/Logistics Disbursed")
-
-with t5:
-    show_section(f_adv, "Staff Advances", "Field Staff Allowances & Tour Advances")
+    # PARSA DISTRICT
+    {"name": "Aditi Pharmacy", "code": "PAR-001", "area": "Manwa Bazar", "district": "Parsa", "phone": "", "dues": 500},
+    {"name": "Ashok Medical Hall", "code": "PAR-002", "area": "Naukatola", "district": "Parsa", "phone": "", "dues": 12230},
+    {"name": "Sudama Surgical", "code": "PAR-003", "area": "Neutan", "district": "Parsa", "phone": "", "dues": 20200},
+    {"name": "B.S Health Clinic", "code": "PAR-004", "area": "Paterwa", "district": "Parsa", "phone": "", "dues": 24665},
+    {"name": "Pandey Medical Hall", "code": "PAR-005", "area": "Badanihar", "district": "Parsa", "phone": "", "dues": 7065},
+    {"name": "Bhawani Medical Hall", "code": "PAR-006", "area": "Bharatwa", "district": "Parsa", "phone": "", "dues": 9950},
+    {"name": "Chandip Medical Hall", "code": "PAR-007", "area": "Kathmandu Tol", "district": "Parsa", "phone": "", "dues": 0},
+    {"name": "Dinamik Pharma", "code": "PAR-008", "area": "Sano Sugauli", "district": "Parsa", "phone": "", "dues": 15815},
+    {"name": "Everest Pharmacy", "code": "PAR-009", "area": "Birwa Chouk", "district": "Parsa", "phone": "", "dues": 0},
+    {"name": "Fatepur Health Clinic", "code": "PAR-010", "area": "Fatepur", "district": "Parsa", "phone": "", "dues": 0},
+    {"name": "Gadi Mai Medical Hall", "code": "PAR-011", "area": "Pachgawa", "district": "Parsa", "phone": "", "dues": 0},
+    {"name": "Ganesh Srestha", "code": "PAR-012", "area": "Birgunj", "district": "Parsa", "phone": "", "dues": 63390},
+    {"name": "Harnaiya Aashirvad Medical", "code": "PAR-013", "area": "Harnaiya", "district": "Parsa", "phone": "", "dues": 4565},
+    {"name": "Madhav Medical Hall", "code": "PAR-014", "area": "Pachgawa", "district": "Parsa", "phone": "", "dues": 0},
+    {"name": "Nawal Kishor Medical Hall", "code": "PAR-015", "area": "Pachgawa", "district": "Parsa", "phone": "", "dues": 0},
+    {"name": "Nausad Medical Hall", "code": "PAR-016", "area": "Rangapur", "district": "Parsa", "phone": "", "dues": 0},
+    {"name": "Kohinoor Medical Hall", "code": "PAR-017", "area": "Milan Chouk", "district": "Parsa", "phone": "", "dues": 0},
+    {"name": "Sibil Medical Hall", "code": "PAR-018", "area": "Milan Chouk", "district": "Parsa", "phone": "", "dues": 0},
+    {"name": "Noor Tamana Health Clinic", "code": "PAR-019", "area": "Derbana", "district": "Parsa", "phone": "", "dues": 0},
+    {"name": "Aftab Medical Hall", "code": "PAR-020", "area": "Derbana", "district": "Parsa", "phone": "", "dues": 0},
+    {"name": "Pandey Medical Hall (Murli)", "code": "PAR-021", "area": "Murli", "district": "Parsa", "phone": "", "dues": 700},
+    {"name": "Puja Medical Hall", "code": "PAR-022", "area": "Fatepur", "district": "Parsa", "phone": "", "dues": 1030},
+    {"name": "Raina Health Clinic", "code": "PAR-023", "area": "Veda Tol", "district": "Parsa", "phone": "", "dues": 3672},
+    {"name": "Rihansh Medical Hall", "code": "PAR-024", "area": "Birgunj", "district": "Parsa", "phone": "", "dues": 1740},
+    {"name": "Roshan Pharmacy", "code": "PAR-025", "area": "Birgunj", "district": "Parsa", "phone": "", "dues": 74290},
+    {"name": "Samir Medical Hall", "code": "PAR-026", "area": "Pachgawa", "district": "Parsa", "phone": "", "dues": 0},
+    {"name": "Sandip Medical Hall", "code": "PAR-027", "area": "Langada Chouk", "district": "Parsa", "phone": "",
