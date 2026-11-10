@@ -17,7 +17,7 @@ st.set_page_config(
 # SPREADSHEET ID & APPS SCRIPT WEBHOOK URL
 SHEET_ID = "1cpPYFS9EkajB5tGfMnReIJ71cmB5djz6oaMvvEoqs6A"
 # Paste your deployed Google Apps Script Web App URL here (same as Repo A)
-WEBHOOK_URL = "YOUR_APPS_SCRIPT_WEBHOOK_URL_HERE"
+WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbxb9oHiM2t0z5az2_Ekbyab4HcitWZfHw1sUVU3f6gYoVxNzFCQeUWiElfsafAoe3yw/exec"
 
 # --- BRANDING & STYLING ---
 st.markdown("""
