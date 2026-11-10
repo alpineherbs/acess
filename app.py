@@ -1,8 +1,10 @@
 import streamlit as st
 import pandas as pd
+import requests
+import datetime
+import time
 import math
 import io
-import datetime
 
 # --- PAGE SETUP ---
 st.set_page_config(
@@ -12,10 +14,12 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# SPREADSHEET ID
+# SPREADSHEET ID & APPS SCRIPT WEBHOOK URL
 SHEET_ID = "1cpPYFS9EkajB5tGfMnReIJ71cmB5djz6oaMvvEoqs6A"
+# Paste your deployed Google Apps Script Web App URL here (same as Repo A)
+WEBHOOK_URL = "YOUR_APPS_SCRIPT_WEBHOOK_URL_HERE"
 
-# --- BRANDING & STYLING (MATCHED TO REPO A) ---
+# --- BRANDING & STYLING ---
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
@@ -28,7 +32,7 @@ st.markdown("""
     .block-container { 
         padding-top: 1.2rem !important; 
         padding-bottom: 2.5rem !important; 
-        max-width: 1440px; 
+        max-width: 1480px; 
     }
     
     /* Top Brand Header */
@@ -200,45 +204,76 @@ def find_col(df, candidates):
             return cols_map[key]
     return None
 
-# --- RESILIENT DATA LOADER ---
-def fetch_sheet_tab(tab_name_candidates):
+# --- RESILIENT DATA LOADER (WEBHOOK DIRECT + CACHE-BUSTED CSV) ---
+def fetch_sheet_tab_cached_busted(tab_name_candidates):
+    """Fetches Google Sheet tab with microsecond cache busting query."""
+    timestamp = int(time.time() * 1000)
     for tab in tab_name_candidates:
-        url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={tab.replace(' ', '%20')}"
-        try:
-            df = pd.read_csv(url, dtype=str)
-            if not df.empty:
-                df.columns = [str(c).strip() for c in df.columns]
-                valid_cols = [c for c in df.columns if not (c.startswith("Unnamed:") and df[c].isna().all())]
-                df = df[valid_cols].dropna(how="all", axis=0)
-                df = df[~df.apply(lambda r: r.astype(str).str.strip().eq("").all() or r.astype(str).str.strip().eq("nan").all(), axis=1)]
+        urls = [
+            f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={tab.replace(' ', '%20')}&_cb={timestamp}",
+            f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&sheet={tab.replace(' ', '%20')}&_cb={timestamp}"
+        ]
+        for url in urls:
+            try:
+                df = pd.read_csv(url, dtype=str)
                 if not df.empty:
-                    return df
-        except Exception:
-            continue
+                    df.columns = [str(c).strip() for c in df.columns]
+                    valid_cols = [c for c in df.columns if not (c.startswith("Unnamed:") and df[c].isna().all())]
+                    df = df[valid_cols].dropna(how="all", axis=0)
+                    df = df[~df.apply(lambda r: r.astype(str).str.strip().eq("").all() or r.astype(str).str.strip().eq("nan").all(), axis=1)]
+                    if not df.empty:
+                        return df
+            except Exception:
+                continue
     return pd.DataFrame()
 
-@st.cache_data(ttl=15)
+@st.cache_data(ttl=5)
 def load_all_records():
-    # 1. Try to fetch live Clients directory from Sheet
-    live_clients_df = fetch_sheet_tab(["Clients", "Client Directory", "Master Clients"])
+    """
+    1. Attempts to load direct JSON data via WEBHOOK_URL (Zero CDN cache).
+    2. Falls back to timestamp cache-busted direct Google Sheets CSV.
+    """
+    timestamp = int(time.time() * 1000)
+    
+    # Try Webhook direct GET if configured
+    if WEBHOOK_URL and WEBHOOK_URL != "YOUR_APPS_SCRIPT_WEBHOOK_URL_HERE":
+        try:
+            resp = requests.get(f"{WEBHOOK_URL}?action=readAll&_t={timestamp}", timeout=8)
+            if resp.status_code == 200:
+                payload = resp.json()
+                if payload.get("status") == "success" and "data" in payload:
+                    d = payload["data"]
+                    return {
+                        "Clients": d.get("clients", []),
+                        "Sales": pd.DataFrame(d.get("sales", [])),
+                        "Collections": pd.DataFrame(d.get("collections", [])),
+                        "Returns": pd.DataFrame(d.get("returns", [])),
+                        "Expenses": pd.DataFrame(d.get("expenses", [])),
+                        "Advances": pd.DataFrame(d.get("advances", [])),
+                        "Source": "⚡ Live Webhook Web App"
+                    }
+        except Exception:
+            pass  # Fall back to CSV
+
+    # Fallback to cache-busted Google Sheets CSV
+    live_clients_df = fetch_sheet_tab_cached_busted(["Clients", "Client Directory", "Master Clients"])
     if not live_clients_df.empty and "name" in [c.lower() for c in live_clients_df.columns]:
         live_clients_df.columns = [str(c).strip().lower() for c in live_clients_df.columns]
         client_pool = live_clients_df.fillna("").to_dict("records")
-        for c in client_pool:
-            c["dues"] = clean_num(c.get("dues", 0.0))
     else:
-        # Fallback to embedded directory
         client_pool = pd.read_csv(io.StringIO(CLIENTS_DATA.strip()), dtype=str).fillna("").to_dict("records")
-        for c in client_pool:
-            c["dues"] = clean_num(c.get("dues", 0.0))
+    
+    for c in client_pool:
+        c["dues"] = clean_num(c.get("dues", 0.0))
 
     return {
         "Clients": client_pool,
-        "Sales": fetch_sheet_tab(["Sales", "Sales Log", "Daily Sales"]),
-        "Collections": fetch_sheet_tab(["Collections", "Receipts", "Cash Collections", "Dues"]),
-        "Returns": fetch_sheet_tab(["Returns", "Goods Return", "Goods Returns"]),
-        "Expenses": fetch_sheet_tab(["Expenses", "Operating Expenses", "Field Expenses"]),
-        "Advances": fetch_sheet_tab(["Staff Advances", "Advances", "Staff"])
+        "Sales": fetch_sheet_tab_cached_busted(["Sales", "Sales Log", "Daily Sales"]),
+        "Collections": fetch_sheet_tab_cached_busted(["Collections", "Receipts", "Cash Collections", "Dues"]),
+        "Returns": fetch_sheet_tab_cached_busted(["Returns", "Goods Return", "Goods Returns"]),
+        "Expenses": fetch_sheet_tab_cached_busted(["Expenses", "Operating Expenses", "Field Expenses"]),
+        "Advances": fetch_sheet_tab_cached_busted(["Staff Advances", "Advances", "Staff"]),
+        "Source": "🔄 Cache-Busted Google Sheets Export"
     }
 
 data_store = load_all_records()
@@ -248,21 +283,21 @@ col_df   = data_store["Collections"].copy()
 ret_df   = data_store["Returns"].copy()
 exp_df   = data_store["Expenses"].copy()
 adv_df   = data_store["Advances"].copy()
+data_source_label = data_store.get("Source", "Online")
 
 # Header Banner
-st.markdown("""
+st.markdown(f"""
 <div class="brand-header">
     <div>
         <div class="brand-title">🌿 ALPINE HERBS PVT. LTD.</div>
         <div class="brand-subtitle">Central Operations & Client 360° Audit Dashboard (Repository B) | Birgunj, Nepal</div>
     </div>
-    <div class="status-badge">🟢 Realtime Ledger Sync</div>
+    <div class="status-badge">{data_source_label}</div>
 </div>
 """, unsafe_allow_html=True)
 
-# Merge Any Walk-in / New Chemists from Sales Sheet into Pool
+# Merge Any New Chemist / Walk-in Names into Pool
 known_names = set(str(c.get("name", "")).strip().lower() for c in master_clients)
-known_codes = set(str(c.get("code", "")).strip().lower() for c in master_clients if c.get("code"))
 combined_clients = master_clients.copy()
 
 if not sales_df.empty:
@@ -286,15 +321,15 @@ if not sales_df.empty:
 
 # --- SIDEBAR CONTROLS ---
 with st.sidebar:
-    st.markdown("### ⚙️ Live Controls")
-    if st.button("⚡ Force Live Refresh", use_container_width=True, type="primary"):
+    st.markdown("### ⚙️ Live Sync Controls")
+    if st.button("⚡ Force Live Fetch Now", use_container_width=True, type="primary"):
         st.cache_data.clear()
         st.rerun()
 
+    st.caption(f"Last updated: {datetime.datetime.now().strftime('%H:%M:%S')}")
     st.markdown("---")
-    st.markdown("### 🔍 Client Search & Filter")
+    st.markdown("### 🔍 Client Search & Route Filter")
     
-    # Area filter
     all_areas = sorted(list(set(str(c.get("area", "")).strip() for c in combined_clients if c.get("area"))))
     area_options = ["All Areas / Routes"] + all_areas
     filter_area = st.selectbox("Route / Area", area_options)
@@ -305,13 +340,12 @@ with st.sidebar:
         filtered_clients = combined_clients
 
     client_display_list = [f"{c.get('name')}  [{c.get('code', 'PAR-000')}] — 📍 {c.get('area', 'Local')}" for c in sorted(filtered_clients, key=lambda x: str(x.get('name', '')).lower())]
-    
     if not client_display_list:
         client_display_list = ["No Clients Found [N/A]"]
         
     selected_client_str = st.selectbox("Select Chemist / Account", client_display_list)
 
-# Resolve Selected Client Info
+# Resolve Selected Client
 selected_client_name = selected_client_str.split("  [")[0].strip()
 client_profile = next((c for c in combined_clients if str(c.get("name", "")).strip().lower() == selected_client_name.lower()), {
     "name": selected_client_name, "code": "PAR-000", "area": "Birgunj", "district": "Parsa", "phone": "", "dues": 0.0
@@ -336,26 +370,21 @@ cli_sales = filter_client_txns(sales_df)
 cli_col   = filter_client_txns(col_df)
 cli_ret   = filter_client_txns(ret_df)
 
-# --- REPO A TRANSACTION SUMMARIES ---
+# Financial Calculations
 op_dues = clean_num(client_profile.get("dues", 0.0))
 
-# 1. Sales Summary
 col_stot  = find_col(cli_sales, ["Total Sale", "Total Sale (Rs.)", "total_sale", "Total Billed", "Total", "Amount"])
 col_scash = find_col(cli_sales, ["Cash Collected", "Cash Recd", "Cash Recd (Rs.)", "cash_collected", "Cash"])
-col_scred = find_col(cli_sales, ["Credit Given", "credit_given", "Credit"])
 
 tot_cli_billed = cli_sales[col_stot].apply(clean_num).sum() if col_stot and not cli_sales.empty else 0.0
 tot_cli_direct_cash = cli_sales[col_scash].apply(clean_num).sum() if col_scash and not cli_sales.empty else 0.0
 
-# 2. Collections Summary
 col_camt = find_col(cli_col, ["Amount Collected", "Amount Collected (Rs.)", "amount", "Amount"])
 tot_cli_dues_paid = cli_col[col_camt].apply(clean_num).sum() if col_camt and not cli_col.empty else 0.0
 
-# 3. Returns Summary
 col_rtot = find_col(cli_ret, ["Total Return", "Total Return (Rs.)", "total", "Total Value", "Amount"])
 tot_cli_returns = cli_ret[col_rtot].apply(clean_num).sum() if col_rtot and not cli_ret.empty else 0.0
 
-# 4. Net Outstanding Balance
 total_cash_paid = tot_cli_direct_cash + tot_cli_dues_paid
 current_outstanding = op_dues + tot_cli_billed - total_cash_paid - tot_cli_returns
 
@@ -378,14 +407,14 @@ st.markdown(f"""
         <div style="text-align:right;">
             <span style="font-size:0.75rem; text-transform:uppercase; color:#64748B; font-weight:700;">Account Status</span><br>
             <span style="color:{'#DC2626' if current_outstanding > 0 else '#164E33'}; font-weight:800; font-size:1.1rem;">
-                {'⚠️ Outstanding Dues' if current_outstanding > 0 else '✅ Ledger Settled'}
+                {'⚠️ Outstanding Balance' if current_outstanding > 0 else '✅ Ledger Settled'}
             </span>
         </div>
     </div>
 </div>
 """, unsafe_allow_html=True)
 
-# KPI Metrics Cards
+# KPI Cards
 k1, k2, k3, k4, k5 = st.columns(5)
 with k1:
     st.markdown(f"""<div class="kpi-card">
@@ -425,23 +454,33 @@ with k5:
 
 st.write("")
 
-# --- BUILD CHRONOLOGICAL LEDGER STATEMENT ---
+# --- BUILD DETAILED GRANULAR STATEMENT WITH ALL DETAILS ---
 statement_rows = []
 
-# 1. Opening Entry
+# 1. Opening Balance Entry
 statement_rows.append({
-    "Date": "Opening", 
-    "Ref #": "INIT-DUES",
-    "Type": "OPENING BALANCE", 
-    "Particulars": "Previous Ledger Outstanding Balance",
-    "Debit (+Sale)": op_dues, 
-    "Credit (-Paid/Ret)": 0.0, 
-    "Balance": op_dues
+    "Date (AD)": "Opening",
+    "Miti (BS)": "-",
+    "Ref / Invoice #": "INIT-DUES",
+    "Client Code": client_profile.get("code", "PAR-000"),
+    "Client Name": client_profile.get("name", ""),
+    "Entry Type": "OPENING BALANCE",
+    "Product Name": "-",
+    "Billed Qty": "-",
+    "FOC Qty": "-",
+    "Rate (Rs.)": "-",
+    "Debit (+Sale)": op_dues,
+    "Credit (-Paid/Ret)": 0.0,
+    "Running Balance": op_dues,
+    "Payment Mode": "-",
+    "MR / Staff": "-",
+    "Remarks / Notes": "Initial ledger balance from directory"
 })
 
-# 2. Sales & Delivery Payments (Grouped cleanly by Invoice)
+# 2. Sales Invoices
 if not cli_sales.empty:
     c_dt   = find_col(cli_sales, ["Date (A.D.)", "Date", "date"])
+    c_bs   = find_col(cli_sales, ["Nepali Miti", "BS Date", "bs_date", "Miti"])
     c_inv  = find_col(cli_sales, ["Invoice Number", "Invoice No", "Invoice No.", "invoice", "Invoice"])
     c_prod = find_col(cli_sales, ["Product Name", "product_name", "Product"])
     c_qty  = find_col(cli_sales, ["Qty", "qty", "Quantity"])
@@ -449,16 +488,16 @@ if not cli_sales.empty:
     c_rt   = find_col(cli_sales, ["Rate", "Rate (Rs.)", "rate"])
     c_tot  = find_col(cli_sales, ["Total Sale", "Total Sale (Rs.)", "total_sale", "Total"])
     c_cash = find_col(cli_sales, ["Cash Collected", "Cash Recd", "Cash Recd (Rs.)", "cash_collected", "Cash"])
-    c_mr   = find_col(cli_sales, ["Staff Name", "staff_name", "MR Name", "Executive"])
+    c_mr   = find_col(cli_sales, ["Staff Name", "staff_name", "MR Name", "Executive", "Staff"])
 
-    # Track handled invoice delivery cash so it appears as one combined credit entry per invoice
-    invoice_delivery_cash = {}
+    # Aggregate invoice delivery cash cleanly per invoice
+    invoice_cash_map = {}
     if c_inv and c_cash:
         for _, r in cli_sales.iterrows():
             inv = str(r.get(c_inv, "INV")).strip()
-            invoice_delivery_cash[inv] = invoice_delivery_cash.get(inv, 0.0) + clean_num(r.get(c_cash, 0))
+            invoice_cash_map[inv] = invoice_cash_map.get(inv, 0.0) + clean_num(r.get(c_cash, 0))
 
-    accounted_cash_invoices = set()
+    credited_invoices = set()
 
     for _, r in cli_sales.iterrows():
         b_val  = clean_num(r.get(c_tot, 0))
@@ -468,130 +507,188 @@ if not cli_sales.empty:
         rt_val = clean_num(r.get(c_rt, 0))
         inv_no = str(r.get(c_inv, "INV")).strip() if c_inv else "INV"
         tx_dt  = str(r.get(c_dt, "-")).strip() if c_dt else "-"
-        mr_str = f" [MR: {r.get(c_mr)}]" if c_mr and pd.notna(r.get(c_mr)) and str(r.get(c_mr)).strip() else ""
-
-        foc_str = f" + {f_val:g} FOC" if f_val > 0 else ""
-        particulars = f"{p_name} (Qty: {q_val:g}{foc_str} @ Rs. {rt_val:,.2f}){mr_str}"
+        tx_bs  = str(r.get(c_bs, "-")).strip() if c_bs else "-"
+        staff  = str(r.get(c_mr, "-")).strip() if c_mr and pd.notna(r.get(c_mr)) else "-"
 
         statement_rows.append({
-            "Date": tx_dt,
-            "Ref #": inv_no,
-            "Type": "PURCHASE / INVOICE",
-            "Particulars": particulars,
+            "Date (AD)": tx_dt,
+            "Miti (BS)": tx_bs,
+            "Ref / Invoice #": inv_no,
+            "Client Code": client_profile.get("code", "PAR-000"),
+            "Client Name": client_profile.get("name", ""),
+            "Entry Type": "PURCHASE / SALE",
+            "Product Name": p_name,
+            "Billed Qty": f"{q_val:g}",
+            "FOC Qty": f"{f_val:g}" if f_val > 0 else "-",
+            "Rate (Rs.)": f"{rt_val:,.2f}",
             "Debit (+Sale)": b_val,
             "Credit (-Paid/Ret)": 0.0,
-            "Balance": 0.0
+            "Running Balance": 0.0,
+            "Payment Mode": "Invoice Bill",
+            "MR / Staff": staff,
+            "Remarks / Notes": f"Billed purchase on delivery"
         })
 
-        # Insert single delivery cash credit entry for this invoice
-        if inv_no in invoice_delivery_cash and inv_no not in accounted_cash_invoices:
-            c_val = invoice_delivery_cash[inv_no]
+        # Insert single delivery cash credit entry per invoice
+        if inv_no in invoice_cash_map and inv_no not in credited_invoices:
+            c_val = invoice_cash_map[inv_no]
             if c_val > 0:
                 statement_rows.append({
-                    "Date": tx_dt,
-                    "Ref #": f"{inv_no}-CASH",
-                    "Type": "DELIVERY CASH",
-                    "Particulars": f"Direct Cash Received upon delivery of Invoice #{inv_no}",
+                    "Date (AD)": tx_dt,
+                    "Miti (BS)": tx_bs,
+                    "Ref / Invoice #": f"{inv_no}-CASH",
+                    "Client Code": client_profile.get("code", "PAR-000"),
+                    "Client Name": client_profile.get("name", ""),
+                    "Entry Type": "DELIVERY CASH",
+                    "Product Name": "-",
+                    "Billed Qty": "-",
+                    "FOC Qty": "-",
+                    "Rate (Rs.)": "-",
                     "Debit (+Sale)": 0.0,
                     "Credit (-Paid/Ret)": c_val,
-                    "Balance": 0.0
+                    "Running Balance": 0.0,
+                    "Payment Mode": "Cash (COD)",
+                    "MR / Staff": staff,
+                    "Remarks / Notes": f"Direct cash received against #{inv_no}"
                 })
-            accounted_cash_invoices.add(inv_no)
+            credited_invoices.add(inv_no)
 
-# 3. Direct Dues Collections / Receipts
+# 3. Dues Collections / Receipts
 if not cli_col.empty:
     c_dt  = find_col(cli_col, ["Date (A.D.)", "Date", "date"])
+    c_bs  = find_col(cli_col, ["Nepali Miti", "BS Date", "bs_date", "Miti"])
     c_rec = find_col(cli_col, ["Receipt / Ref No.", "Receipt No", "receipt_no", "Receipt"])
     c_amt = find_col(cli_col, ["Amount Collected", "Amount Collected (Rs.)", "amount", "Amount"])
     c_mod = find_col(cli_col, ["Payment Instrument", "Payment Mode", "mode", "Instrument"])
     c_rem = find_col(cli_col, ["Transaction Note", "Remarks / Ref", "remarks", "Remarks"])
+    c_mr  = find_col(cli_col, ["Staff Name", "staff_name", "MR Name", "Staff"])
 
     for _, r in cli_col.iterrows():
         amt = clean_num(r.get(c_amt, 0))
         if amt > 0:
             rec_no = str(r.get(c_rec, "REC")).strip() if c_rec else "REC"
             tx_dt  = str(r.get(c_dt, "-")).strip() if c_dt else "-"
+            tx_bs  = str(r.get(c_bs, "-")).strip() if c_bs else "-"
             mode   = str(r.get(c_mod, "Cash")).strip() if c_mod else "Cash"
             note   = str(r.get(c_rem, "Dues Clearance")).strip() if c_rem else "Dues Clearance"
+            staff  = str(r.get(c_mr, "-")).strip() if c_mr and pd.notna(r.get(c_mr)) else "-"
 
             statement_rows.append({
-                "Date": tx_dt,
-                "Ref #": rec_no,
-                "Type": "PAYMENT RECEIPT",
-                "Particulars": f"Collection Recovery via {mode} — {note}",
+                "Date (AD)": tx_dt,
+                "Miti (BS)": tx_bs,
+                "Ref / Invoice #": rec_no,
+                "Client Code": client_profile.get("code", "PAR-000"),
+                "Client Name": client_profile.get("name", ""),
+                "Entry Type": "DUES PAYMENT",
+                "Product Name": "-",
+                "Billed Qty": "-",
+                "FOC Qty": "-",
+                "Rate (Rs.)": "-",
                 "Debit (+Sale)": 0.0,
                 "Credit (-Paid/Ret)": amt,
-                "Balance": 0.0
+                "Running Balance": 0.0,
+                "Payment Mode": mode,
+                "MR / Staff": staff,
+                "Remarks / Notes": note
             })
 
 # 4. Product Returns
 if not cli_ret.empty:
     c_dt  = find_col(cli_ret, ["Date (A.D.)", "Date", "date"])
+    c_bs  = find_col(cli_ret, ["Nepali Miti", "BS Date", "bs_date", "Miti"])
     c_prd = find_col(cli_ret, ["Returned Item Name", "Product Name", "product_name"])
     c_qty = find_col(cli_ret, ["Units Returned", "Return Qty", "qty"])
+    c_rt  = find_col(cli_ret, ["Credit Rate (Rs.)", "Rate", "rate"])
     c_tot = find_col(cli_ret, ["Total Return", "Total Return (Rs.)", "total", "Amount"])
     c_rsn = find_col(cli_ret, ["Reason", "reason"])
+    c_mr  = find_col(cli_ret, ["Staff Name", "staff_name", "MR Name", "Staff"])
 
     for _, r in cli_ret.iterrows():
         ret_val = clean_num(r.get(c_tot, 0))
         if ret_val > 0:
             tx_dt = str(r.get(c_dt, "-")).strip() if c_dt else "-"
+            tx_bs = str(r.get(c_bs, "-")).strip() if c_bs else "-"
             item  = str(r.get(c_prd, "Stock Item")).strip() if c_prd else "Stock Item"
             qty   = clean_num(r.get(c_qty, 0)) if c_qty else 0
+            rate  = clean_num(r.get(c_rt, 0)) if c_rt else 0
             rsn   = str(r.get(c_rsn, "Damage / Expiry")).strip() if c_rsn else ""
+            staff = str(r.get(c_mr, "-")).strip() if c_mr and pd.notna(r.get(c_mr)) else "-"
 
             statement_rows.append({
-                "Date": tx_dt,
-                "Ref #": "CREDIT-NOTE",
-                "Type": "STOCK RETURN",
-                "Particulars": f"Goods Returned: {item} (Qty: {qty:g}) — {rsn}",
+                "Date (AD)": tx_dt,
+                "Miti (BS)": tx_bs,
+                "Ref / Invoice #": "CREDIT-NOTE",
+                "Client Code": client_profile.get("code", "PAR-000"),
+                "Client Name": client_profile.get("name", ""),
+                "Entry Type": "GOODS RETURN",
+                "Product Name": item,
+                "Billed Qty": f"{qty:g}",
+                "FOC Qty": "-",
+                "Rate (Rs.)": f"{rate:,.2f}" if rate > 0 else "-",
                 "Debit (+Sale)": 0.0,
                 "Credit (-Paid/Ret)": ret_val,
-                "Balance": 0.0
+                "Running Balance": 0.0,
+                "Payment Mode": "Credit Adjustment",
+                "MR / Staff": staff,
+                "Remarks / Notes": rsn
             })
 
-# Compute Cumulative Running Balance
+# Calculate Running Balance
 running_bal = op_dues
 for i in range(1, len(statement_rows)):
     row = statement_rows[i]
     running_bal = running_bal + row["Debit (+Sale)"] - row["Credit (-Paid/Ret)"]
-    row["Balance"] = running_bal
+    row["Running Balance"] = running_bal
 
-stmt_df = pd.DataFrame(statement_rows)
+raw_stmt_df = pd.DataFrame(statement_rows)
 
-# Format for Presentation
-disp_stmt = stmt_df.copy()
+# Formatted DataFrame for Presentation
+disp_stmt = raw_stmt_df.copy()
 disp_stmt["Debit (+Sale)"] = disp_stmt["Debit (+Sale)"].apply(lambda v: f"Rs. {v:,.2f}" if v > 0 else "-")
 disp_stmt["Credit (-Paid/Ret)"] = disp_stmt["Credit (-Paid/Ret)"].apply(lambda v: f"Rs. {v:,.2f}" if v > 0 else "-")
-disp_stmt["Balance"] = disp_stmt["Balance"].apply(lambda v: f"Rs. {v:,.2f}")
+disp_stmt["Running Balance"] = disp_stmt["Running Balance"].apply(lambda v: f"Rs. {v:,.2f}")
 
 # --- DRILLDOWN TABS ---
 t1, t2, t3, t4, t5 = st.tabs([
-    f"📜 Full Ledger Statement ({len(stmt_df)})",
+    f"📜 Full Ledger Statement ({len(raw_stmt_df)})",
     f"🛒 Invoiced Purchases ({len(cli_sales)})",
     f"💵 Payment Receipts ({len(cli_col)})",
     f"🔄 Stock Returns ({len(cli_ret)})",
     "🏢 Central Master Feeds"
 ])
 
-# TAB 1: LEDGER STATEMENT
+# TAB 1: FULL DETAILED STATEMENT
 with t1:
-    st.markdown(f"##### 📜 Official Account Statement — {client_profile.get('name')}")
+    st.markdown(f"##### 📜 Official Account Statement & Audit Trail — {client_profile.get('name')}")
+    st.caption("Complete breakdown showing date, miti, product details, billed/FOC quantities, rates, debits, credits, and live running balance.")
+
+    # Statement Summary Card
+    st.markdown(f"""
+    <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; padding:12px 18px; margin-bottom:14px; display:flex; justify-content:space-between; flex-wrap:wrap; gap:10px; font-size:0.86rem;">
+        <div><b>Client:</b> {client_profile.get('name')} [{client_profile.get('code')}]</div>
+        <div><b>Opening Dues:</b> Rs. {op_dues:,.2f}</div>
+        <div><b>Total Billed:</b> Rs. {tot_cli_billed:,.2f}</div>
+        <div><b>Total Paid:</b> Rs. {total_cash_paid:,.2f}</div>
+        <div><b>Returns:</b> Rs. {tot_cli_returns:,.2f}</div>
+        <div style="color:{'#DC2626' if current_outstanding > 0 else '#164E33'}; font-weight:700;"><b>Closing Balance:</b> Rs. {current_outstanding:,.2f}</div>
+    </div>
+    """, unsafe_allow_html=True)
+
     st.dataframe(disp_stmt, use_container_width=True, hide_index=True)
 
     col_d1, col_d2 = st.columns([2, 5])
     with col_d1:
         csv_buf = io.BytesIO()
-        stmt_df.to_csv(csv_buf, index=False)
+        raw_stmt_df.to_csv(csv_buf, index=False)
         st.download_button(
-            label=f"📥 Download Statement (CSV)",
+            label=f"📥 Download Full Statement (CSV)",
             data=csv_buf.getvalue(),
             file_name=f"Statement_{client_profile.get('code','PAR')}_{client_profile.get('name','Client').replace(' ', '_')}.csv",
             mime="text/csv",
             use_container_width=True
         )
 
-# TAB 2: INVOICES
+# TAB 2: INVOICED PURCHASES
 with t2:
     st.markdown(f"##### 🛒 Invoiced Product Purchases — {client_profile.get('name')}")
     if not cli_sales.empty:
@@ -615,7 +712,7 @@ with t4:
     else:
         st.info("ℹ️ No product returns recorded for this client.")
 
-# TAB 5: COMPANY-WIDE MASTER FEEDS
+# TAB 5: ALL FEEDS & SYSTEM SETUP
 with t5:
     st.markdown("##### 🏢 Company-Wide Live Operations Master Feeds")
     sub_tab1, sub_tab2, sub_tab3, sub_tab4, sub_tab5 = st.tabs([
