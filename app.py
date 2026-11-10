@@ -2,69 +2,108 @@ import streamlit as st
 import pandas as pd
 import math
 import io
+import datetime
 
 # --- PAGE SETUP ---
 st.set_page_config(
-    page_title="ALPINE HERBS | Client 360° Master Dashboard",
+    page_title="Alpine Herbs | Client 360° Audit Dashboard",
     page_icon="🌿",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
 # SPREADSHEET ID
 SHEET_ID = "1cpPYFS9EkajB5tGfMnReIJ71cmB5djz6oaMvvEoqs6A"
 
-# --- BRANDING & STYLING ---
-st.markdown("""<style>
-#MainMenu, footer { visibility: hidden; }
-.block-container { 
-    padding-top: 1.8rem !important; 
-    padding-bottom: 2.5rem !important; 
-    max-width: 1560px; 
-}
-.main-header {
-    background: linear-gradient(135deg, #0D2818 0%, #164E33 100%);
-    padding: 16px 22px;
-    border-radius: 8px;
-    color: white;
-    margin-bottom: 1.2rem;
-    box-shadow: 0 4px 12px rgba(13, 40, 24, 0.08);
-}
-.client-hero {
-    background: #F4FAF6;
-    border: 1px solid #B0D4BE;
-    border-left: 5px solid #164E33;
-    padding: 16px 20px;
-    border-radius: 8px;
-    margin-bottom: 1.2rem;
-}
-.kpi-card {
-    background: #FFFFFF;
-    border: 1px solid #C8DCCF;
-    border-top: 3.5px solid #164E33;
-    border-radius: 8px;
-    padding: 12px 14px;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.02);
-}
-.kpi-title { 
-    font-size: 0.75rem; 
-    font-weight: 700; 
-    color: #4A6354; 
-    text-transform: uppercase; 
-    margin-bottom: 3px; 
-}
-.kpi-value { 
-    font-size: 1.35rem; 
-    font-weight: 800; 
-    color: #0D2818; 
-}
-.kpi-sub { 
-    font-size: 0.72rem; 
-    color: #738C7D; 
-    margin-top: 2px; 
-}
-</style>""", unsafe_allow_html=True)
+# --- BRANDING & STYLING (MATCHED TO REPO A) ---
+st.markdown("""
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+    
+    html, body, [class*="css"] {
+        font-family: 'Inter', sans-serif;
+    }
+    
+    #MainMenu, footer, header { visibility: hidden; }
+    .block-container { 
+        padding-top: 1.2rem !important; 
+        padding-bottom: 2.5rem !important; 
+        max-width: 1440px; 
+    }
+    
+    /* Top Brand Header */
+    .brand-header {
+        background: linear-gradient(135deg, #092013 0%, #164E33 60%, #1e6b46 100%);
+        padding: 18px 24px;
+        border-radius: 12px;
+        color: #FFFFFF;
+        box-shadow: 0 4px 16px rgba(9, 32, 19, 0.12);
+        margin-bottom: 1.3rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .brand-title {
+        font-size: 1.45rem;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        margin: 0;
+    }
+    .brand-subtitle {
+        font-size: 0.85rem;
+        color: #C3E2D0;
+        margin-top: 4px;
+    }
+    .status-badge {
+        background: rgba(255, 255, 255, 0.15);
+        padding: 6px 14px;
+        border-radius: 20px;
+        font-size: 0.8rem;
+        border: 1px solid rgba(255, 255, 255, 0.25);
+    }
 
-# --- MASTER CLIENT LEDGER (SYNTAX-SAFE CSV TEXT BLOCK) ---
+    /* Client Profile Card */
+    .client-hero {
+        background: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-left: 6px solid #164E33;
+        padding: 18px 22px;
+        border-radius: 10px;
+        margin-bottom: 1.2rem;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+    }
+
+    /* Modern KPI Cards */
+    .kpi-card {
+        background: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-top: 3.5px solid #164E33;
+        border-radius: 8px;
+        padding: 14px 16px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+    .kpi-title { 
+        font-size: 0.72rem; 
+        font-weight: 700; 
+        color: #64748B; 
+        text-transform: uppercase; 
+        letter-spacing: 0.04em;
+        margin-bottom: 4px; 
+    }
+    .kpi-value { 
+        font-size: 1.35rem; 
+        font-weight: 800; 
+        color: #0F172A; 
+    }
+    .kpi-sub { 
+        font-size: 0.74rem; 
+        color: #94A3B8; 
+        margin-top: 4px; 
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# --- MASTER CLIENT LEDGER (FALLBACK DATA) ---
 CLIENTS_DATA = """name,code,area,district,phone,dues
 Naresh Medical,BAR-001,Kalaiya,Bara,9807267001,3100
 Mahir Health Clinic,BAR-002,Jeetpur,Bara,9807100296,8165
@@ -137,14 +176,6 @@ Satiya Health Clinic,PAR-039,Lautan,Parsa,,0
 Anil Medical Hall,PAR-040,Gadwal,Parsa,,0
 Harnaiya City Hospital,PAR-041,Harnaiya,Parsa,,0"""
 
-# Parse safely into records with zero brace-matching errors
-MASTER_CLIENTS = pd.read_csv(io.StringIO(CLIENTS_DATA.strip()), dtype=str).fillna("").to_dict("records")
-for c in MASTER_CLIENTS:
-    try:
-        c["dues"] = float(c["dues"]) if c["dues"] != "" else 0.0
-    except:
-        c["dues"] = 0.0
-
 # --- UTILITIES ---
 def clean_num(val):
     if pd.isna(val) or val is None:
@@ -162,10 +193,11 @@ def money(val):
 def find_col(df, candidates):
     if df.empty:
         return None
-    cols_map = {str(c).strip().lower(): c for c in df.columns}
+    cols_map = {str(c).strip().lower().replace("_", " "): c for c in df.columns}
     for cand in candidates:
-        if cand.strip().lower() in cols_map:
-            return cols_map[cand.strip().lower()]
+        key = cand.strip().lower().replace("_", " ")
+        if key in cols_map:
+            return cols_map[key]
     return None
 
 # --- RESILIENT DATA LOADER ---
@@ -177,8 +209,7 @@ def fetch_sheet_tab(tab_name_candidates):
             if not df.empty:
                 df.columns = [str(c).strip() for c in df.columns]
                 valid_cols = [c for c in df.columns if not (c.startswith("Unnamed:") and df[c].isna().all())]
-                df = df[valid_cols]
-                df = df.dropna(how="all", axis=0)
+                df = df[valid_cols].dropna(how="all", axis=0)
                 df = df[~df.apply(lambda r: r.astype(str).str.strip().eq("").all() or r.astype(str).str.strip().eq("nan").all(), axis=1)]
                 if not df.empty:
                     return df
@@ -186,53 +217,67 @@ def fetch_sheet_tab(tab_name_candidates):
             continue
     return pd.DataFrame()
 
-@st.cache_data(ttl=10)
+@st.cache_data(ttl=15)
 def load_all_records():
+    # 1. Try to fetch live Clients directory from Sheet
+    live_clients_df = fetch_sheet_tab(["Clients", "Client Directory", "Master Clients"])
+    if not live_clients_df.empty and "name" in [c.lower() for c in live_clients_df.columns]:
+        live_clients_df.columns = [str(c).strip().lower() for c in live_clients_df.columns]
+        client_pool = live_clients_df.fillna("").to_dict("records")
+        for c in client_pool:
+            c["dues"] = clean_num(c.get("dues", 0.0))
+    else:
+        # Fallback to embedded directory
+        client_pool = pd.read_csv(io.StringIO(CLIENTS_DATA.strip()), dtype=str).fillna("").to_dict("records")
+        for c in client_pool:
+            c["dues"] = clean_num(c.get("dues", 0.0))
+
     return {
-        "Sales": fetch_sheet_tab(["Sales"]),
-        "Collections": fetch_sheet_tab(["Collections", "Receipts", "Cash Collections"]),
+        "Clients": client_pool,
+        "Sales": fetch_sheet_tab(["Sales", "Sales Log", "Daily Sales"]),
+        "Collections": fetch_sheet_tab(["Collections", "Receipts", "Cash Collections", "Dues"]),
         "Returns": fetch_sheet_tab(["Returns", "Goods Return", "Goods Returns"]),
-        "Expenses": fetch_sheet_tab(["Expenses", "Operating Expenses"]),
+        "Expenses": fetch_sheet_tab(["Expenses", "Operating Expenses", "Field Expenses"]),
         "Advances": fetch_sheet_tab(["Staff Advances", "Advances", "Staff"])
     }
 
-raw_data = load_all_records()
-sales_df = raw_data["Sales"].copy()
-col_df   = raw_data["Collections"].copy()
-ret_df   = raw_data["Returns"].copy()
-exp_df   = raw_data["Expenses"].copy()
-adv_df   = raw_data["Advances"].copy()
+data_store = load_all_records()
+master_clients = data_store["Clients"]
+sales_df = data_store["Sales"].copy()
+col_df   = data_store["Collections"].copy()
+ret_df   = data_store["Returns"].copy()
+exp_df   = data_store["Expenses"].copy()
+adv_df   = data_store["Advances"].copy()
 
 # Header Banner
 st.markdown("""
-<div class="main-header">
-    <div style="display:flex; justify-content:space-between; align-items:center;">
-        <div>
-            <h2 style="margin:0; font-weight:800; font-size:1.55rem; color:#FFFFFF;">🌿 ALPINE HERBS PVT. LTD.</h2>
-            <div style="font-size:0.86rem; color:#D3E6DA; margin-top:2px;">
-                CENTRAL OPERATIONS & CLIENT 360° AUDIT DASHBOARD (REPOSITORY B) &nbsp;|&nbsp; BIRGUNJ, NEPAL
-            </div>
-        </div>
+<div class="brand-header">
+    <div>
+        <div class="brand-title">🌿 ALPINE HERBS PVT. LTD.</div>
+        <div class="brand-subtitle">Central Operations & Client 360° Audit Dashboard (Repository B) | Birgunj, Nepal</div>
     </div>
+    <div class="status-badge">🟢 Realtime Ledger Sync</div>
 </div>
 """, unsafe_allow_html=True)
 
-# Build Comprehensive Client Pool (Master Directory + Any New Parties from Sales)
-known_names = set(c["name"].lower() for c in MASTER_CLIENTS)
-combined_clients = MASTER_CLIENTS.copy()
+# Merge Any Walk-in / New Chemists from Sales Sheet into Pool
+known_names = set(str(c.get("name", "")).strip().lower() for c in master_clients)
+known_codes = set(str(c.get("code", "")).strip().lower() for c in master_clients if c.get("code"))
+combined_clients = master_clients.copy()
 
 if not sales_df.empty:
-    c_sname = find_col(sales_df, ["Client Name", "client_name", "Party Name"])
+    c_sname = find_col(sales_df, ["Client Name", "client_name", "Party Name", "Customer Name"])
     c_scode = find_col(sales_df, ["Client Code", "client_code", "Code"])
-    c_sarea = find_col(sales_df, ["Address", "Area", "Town"])
+    c_sarea = find_col(sales_df, ["Address", "Area", "Town", "Territory"])
     if c_sname:
         for _, r in sales_df.iterrows():
             nm = str(r.get(c_sname, "")).strip()
+            cd = str(r.get(c_scode, "NEW-000")).strip() if c_scode else "NEW-000"
             if nm and nm.lower() not in known_names and nm.lower() != "walk-in party":
                 known_names.add(nm.lower())
                 combined_clients.append({
                     "name": nm,
-                    "code": str(r.get(c_scode, "NEW-000")).strip() if c_scode else "NEW-000",
+                    "code": cd,
                     "area": str(r.get(c_sarea, "Birgunj")).strip() if c_sarea else "Birgunj",
                     "district": "Parsa",
                     "phone": "",
@@ -246,197 +291,266 @@ with st.sidebar:
         st.cache_data.clear()
         st.rerun()
 
-    st.divider()
-    st.markdown("### 👤 Select Client / Chemist")
+    st.markdown("---")
+    st.markdown("### 🔍 Client Search & Filter")
     
-    # Area Filter for Client Search
-    area_options = ["All Areas"] + sorted(list(set(c["area"] for c in combined_clients if c.get("area"))))
-    filter_area = st.selectbox("Filter Clients by Route / Area", area_options)
+    # Area filter
+    all_areas = sorted(list(set(str(c.get("area", "")).strip() for c in combined_clients if c.get("area"))))
+    area_options = ["All Areas / Routes"] + all_areas
+    filter_area = st.selectbox("Route / Area", area_options)
 
-    if filter_area != "All Areas":
-        filtered_client_pool = [c for c in combined_clients if c["area"].lower() == filter_area.lower()]
+    if filter_area != "All Areas / Routes":
+        filtered_clients = [c for c in combined_clients if str(c.get("area", "")).strip().lower() == filter_area.lower()]
     else:
-        filtered_client_pool = combined_clients
+        filtered_clients = combined_clients
 
-    client_display_list = [f"{c['name']}  [{c['code']}] — 📍 {c['area']}" for c in sorted(filtered_client_pool, key=lambda x: x["name"].lower())]
-    selected_client_str = st.selectbox("Choose Client to View Statement", client_display_list)
+    client_display_list = [f"{c.get('name')}  [{c.get('code', 'PAR-000')}] — 📍 {c.get('area', 'Local')}" for c in sorted(filtered_clients, key=lambda x: str(x.get('name', '')).lower())]
+    
+    if not client_display_list:
+        client_display_list = ["No Clients Found [N/A]"]
+        
+    selected_client_str = st.selectbox("Select Chemist / Account", client_display_list)
 
 # Resolve Selected Client Info
 selected_client_name = selected_client_str.split("  [")[0].strip()
-client_profile = next((c for c in combined_clients if c["name"].lower() == selected_client_name.lower()), {
-    "name": selected_client_name, "code": "N/A", "area": "N/A", "district": "N/A", "phone": "N/A", "dues": 0.0
+client_profile = next((c for c in combined_clients if str(c.get("name", "")).strip().lower() == selected_client_name.lower()), {
+    "name": selected_client_name, "code": "PAR-000", "area": "Birgunj", "district": "Parsa", "phone": "", "dues": 0.0
 })
+client_code = str(client_profile.get("code", "")).strip().lower()
 
-# --- CLIENT SPECIFIC DATA EXTRACTION ---
-c_client_in_sales = find_col(sales_df, ["Client Name", "client_name", "Party Name"])
-if c_client_in_sales and not sales_df.empty:
-    cli_sales = sales_df[sales_df[c_client_in_sales].astype(str).str.strip().str.lower() == selected_client_name.lower()].copy()
-else:
-    cli_sales = pd.DataFrame()
+# --- REPO A SCHEMA-AWARE FILTERING FUNCTION ---
+def filter_client_txns(df):
+    if df.empty:
+        return pd.DataFrame()
+    c_name = find_col(df, ["Client Name", "client_name", "Party Name", "Customer Name"])
+    c_code = find_col(df, ["Client Code", "client_code", "Code"])
+    
+    mask = pd.Series([False] * len(df), index=df.index)
+    if c_name:
+        mask = mask | (df[c_name].astype(str).str.strip().str.lower() == selected_client_name.lower())
+    if c_code and client_code and client_code not in ["par-000", "bar-000", "new-000", "n/a", ""]:
+        mask = mask | (df[c_code].astype(str).str.strip().str.lower() == client_code)
+    return df[mask].copy()
 
-c_client_in_col = find_col(col_df, ["Client Name", "client_name", "Party Name"])
-if c_client_in_col and not col_df.empty:
-    cli_col = col_df[col_df[c_client_in_col].astype(str).str.strip().str.lower() == selected_client_name.lower()].copy()
-else:
-    cli_col = pd.DataFrame()
+cli_sales = filter_client_txns(sales_df)
+cli_col   = filter_client_txns(col_df)
+cli_ret   = filter_client_txns(ret_df)
 
-c_client_in_ret = find_col(ret_df, ["Client Name", "client_name", "Party Name"])
-if c_client_in_ret and not ret_df.empty:
-    cli_ret = ret_df[ret_df[c_client_in_ret].astype(str).str.strip().str.lower() == selected_client_name.lower()].copy()
-else:
-    cli_ret = pd.DataFrame()
+# --- REPO A TRANSACTION SUMMARIES ---
+op_dues = clean_num(client_profile.get("dues", 0.0))
 
-# Calculations for Selected Client
-op_dues = float(client_profile.get("dues", 0.0))
-
-col_stot  = find_col(cli_sales, ["Total Sale", "Total Sale (Rs.)", "Total Billed", "Total"])
-col_scash = find_col(cli_sales, ["Cash Recd", "Cash Recd (Rs.)", "Cash Collected", "Cash"])
+# 1. Sales Summary
+col_stot  = find_col(cli_sales, ["Total Sale", "Total Sale (Rs.)", "total_sale", "Total Billed", "Total", "Amount"])
+col_scash = find_col(cli_sales, ["Cash Collected", "Cash Recd", "Cash Recd (Rs.)", "cash_collected", "Cash"])
+col_scred = find_col(cli_sales, ["Credit Given", "credit_given", "Credit"])
 
 tot_cli_billed = cli_sales[col_stot].apply(clean_num).sum() if col_stot and not cli_sales.empty else 0.0
 tot_cli_direct_cash = cli_sales[col_scash].apply(clean_num).sum() if col_scash and not cli_sales.empty else 0.0
 
-col_camt = find_col(cli_col, ["Amount Collected", "Amount Collected (Rs.)", "Amount"])
+# 2. Collections Summary
+col_camt = find_col(cli_col, ["Amount Collected", "Amount Collected (Rs.)", "amount", "Amount"])
 tot_cli_dues_paid = cli_col[col_camt].apply(clean_num).sum() if col_camt and not cli_col.empty else 0.0
 
-col_rtot = find_col(cli_ret, ["Total Return", "Total Return (Rs.)", "Total Value", "Total", "Amount"])
+# 3. Returns Summary
+col_rtot = find_col(cli_ret, ["Total Return", "Total Return (Rs.)", "total", "Total Value", "Amount"])
 tot_cli_returns = cli_ret[col_rtot].apply(clean_num).sum() if col_rtot and not cli_ret.empty else 0.0
 
+# 4. Net Outstanding Balance
 total_cash_paid = tot_cli_direct_cash + tot_cli_dues_paid
 current_outstanding = op_dues + tot_cli_billed - total_cash_paid - tot_cli_returns
 
 # --- CLIENT BANNER & FINANCIAL SUMMARY ---
-phone_info = f" | 📞 **Phone:** {client_profile['phone']}" if client_profile.get('phone') else ""
+phone_info = f" &nbsp;|&nbsp; 📞 <b>Phone:</b> {client_profile['phone']}" if client_profile.get('phone') else ""
 st.markdown(f"""
 <div class="client-hero">
     <div style="display:flex; justify-content:space-between; align-items:center;">
         <div>
-            <span style="background:#164E33; color:white; padding:3px 8px; border-radius:4px; font-weight:700; font-size:0.8rem;">
+            <span style="background:#164E33; color:white; padding:4px 10px; border-radius:6px; font-weight:700; font-size:0.82rem; letter-spacing:0.02em;">
                 {client_profile.get('code', 'PAR-000')}
             </span>
-            <span style="font-size:1.4rem; font-weight:800; color:#0D2818; margin-left:8px;">
-                {client_profile['name']}
+            <span style="font-size:1.35rem; font-weight:800; color:#0F172A; margin-left:10px;">
+                {client_profile.get('name')}
             </span>
-            <div style="font-size:0.88rem; color:#2D5A40; margin-top:4px;">
-                📍 <b>Territory:</b> {client_profile.get('area', 'Birgunj')} ({client_profile.get('district', 'Parsa')}) {phone_info}
+            <div style="font-size:0.86rem; color:#475569; margin-top:6px;">
+                📍 <b>Territory:</b> {client_profile.get('area', 'Birgunj')}, {client_profile.get('district', 'Parsa')} {phone_info}
             </div>
+        </div>
+        <div style="text-align:right;">
+            <span style="font-size:0.75rem; text-transform:uppercase; color:#64748B; font-weight:700;">Account Status</span><br>
+            <span style="color:{'#DC2626' if current_outstanding > 0 else '#164E33'}; font-weight:800; font-size:1.1rem;">
+                {'⚠️ Outstanding Dues' if current_outstanding > 0 else '✅ Ledger Settled'}
+            </span>
         </div>
     </div>
 </div>
 """, unsafe_allow_html=True)
 
-# KPI Cards
-c1, c2, c3, c4, c5 = st.columns(5)
-with c1:
+# KPI Metrics Cards
+k1, k2, k3, k4, k5 = st.columns(5)
+with k1:
     st.markdown(f"""<div class="kpi-card">
         <div class="kpi-title">📜 Opening Dues</div>
         <div class="kpi-value">{money(op_dues)}</div>
         <div class="kpi-sub">Initial Ledger Balance</div>
     </div>""", unsafe_allow_html=True)
-with c2:
+
+with k2:
     st.markdown(f"""<div class="kpi-card">
-        <div class="kpi-title">🛒 New Billed Sales</div>
+        <div class="kpi-title">🛒 New Invoiced Sales</div>
         <div class="kpi-value">{money(tot_cli_billed)}</div>
-        <div class="kpi-sub">Invoiced Products Total</div>
+        <div class="kpi-sub">{len(cli_sales)} line item(s) invoiced</div>
     </div>""", unsafe_allow_html=True)
-with c3:
-    st.markdown(f"""<div class="kpi-card" style="border-top-color:#2D7D52;">
-        <div class="kpi-title">💵 Total Cash Paid</div>
+
+with k3:
+    st.markdown(f"""<div class="kpi-card" style="border-top-color:#164E33;">
+        <div class="kpi-title">💵 Total Payments Recd</div>
         <div class="kpi-value" style="color:#164E33;">{money(total_cash_paid)}</div>
-        <div class="kpi-sub">Sales: {money(tot_cli_direct_cash)} | Dues: {money(tot_cli_dues_paid)}</div>
+        <div class="kpi-sub">Delivery: {money(tot_cli_direct_cash)} | Dues: {money(tot_cli_dues_paid)}</div>
     </div>""", unsafe_allow_html=True)
-with c4:
-    st.markdown(f"""<div class="kpi-card" style="border-top-color:#6B46C1;">
-        <div class="kpi-title">🔄 Goods Returned</div>
-        <div class="kpi-value" style="color:#6B46C1;">{money(tot_cli_returns)}</div>
-        <div class="kpi-sub">Damage / Expiry Value</div>
+
+with k4:
+    st.markdown(f"""<div class="kpi-card" style="border-top-color:#7C3AED;">
+        <div class="kpi-title">🔄 Returns / Damages</div>
+        <div class="kpi-value" style="color:#7C3AED;">{money(tot_cli_returns)}</div>
+        <div class="kpi-sub">{len(cli_ret)} item(s) credited back</div>
     </div>""", unsafe_allow_html=True)
-with c5:
-    due_color = "#900C3F" if current_outstanding > 0 else "#0D2818"
-    st.markdown(f"""<div class="kpi-card" style="border-top-color:{due_color}; background:#F4FAF6;">
-        <div class="kpi-title">💰 Current Net Balance</div>
+
+with k5:
+    due_color = "#DC2626" if current_outstanding > 0 else "#164E33"
+    st.markdown(f"""<div class="kpi-card" style="border-top-color:{due_color}; background:#FAFCF8;">
+        <div class="kpi-title">💰 Current Balance Payable</div>
         <div class="kpi-value" style="color:{due_color};">{money(current_outstanding)}</div>
-        <div class="kpi-sub">Total Payable Today</div>
+        <div class="kpi-sub">Closing Outstanding Today</div>
     </div>""", unsafe_allow_html=True)
 
 st.write("")
 
-# --- BUILD CHRONOLOGICAL STATEMENT ---
+# --- BUILD CHRONOLOGICAL LEDGER STATEMENT ---
 statement_rows = []
 
+# 1. Opening Entry
 statement_rows.append({
-    "Date": "Opening", "Time": "-", "Ref #": "INIT-DUES",
-    "Type": "OPENING BALANCE", "Particulars": "Previous Ledger Outstanding Balance",
-    "Debit (+Sale)": op_dues, "Credit (-Paid/Ret)": 0.0, "Balance": op_dues
+    "Date": "Opening", 
+    "Ref #": "INIT-DUES",
+    "Type": "OPENING BALANCE", 
+    "Particulars": "Previous Ledger Outstanding Balance",
+    "Debit (+Sale)": op_dues, 
+    "Credit (-Paid/Ret)": 0.0, 
+    "Balance": op_dues
 })
 
+# 2. Sales & Delivery Payments (Grouped cleanly by Invoice)
 if not cli_sales.empty:
     c_dt   = find_col(cli_sales, ["Date (A.D.)", "Date", "date"])
-    c_tm   = find_col(cli_sales, ["Time", "time"])
-    c_inv  = find_col(cli_sales, ["Invoice No", "Invoice No.", "invoice"])
+    c_inv  = find_col(cli_sales, ["Invoice Number", "Invoice No", "Invoice No.", "invoice", "Invoice"])
     c_prod = find_col(cli_sales, ["Product Name", "product_name", "Product"])
-    c_qty  = find_col(cli_sales, ["Qty", "qty"])
+    c_qty  = find_col(cli_sales, ["Qty", "qty", "Quantity"])
+    c_foc  = find_col(cli_sales, ["FOC", "foc_qty", "FOC Qty", "Free"])
     c_rt   = find_col(cli_sales, ["Rate", "Rate (Rs.)", "rate"])
-    c_tot  = find_col(cli_sales, ["Total Sale", "Total Sale (Rs.)", "total_sale"])
-    c_cash = find_col(cli_sales, ["Cash Recd", "Cash Recd (Rs.)", "cash_collected"])
+    c_tot  = find_col(cli_sales, ["Total Sale", "Total Sale (Rs.)", "total_sale", "Total"])
+    c_cash = find_col(cli_sales, ["Cash Collected", "Cash Recd", "Cash Recd (Rs.)", "cash_collected", "Cash"])
+    c_mr   = find_col(cli_sales, ["Staff Name", "staff_name", "MR Name", "Executive"])
+
+    # Track handled invoice delivery cash so it appears as one combined credit entry per invoice
+    invoice_delivery_cash = {}
+    if c_inv and c_cash:
+        for _, r in cli_sales.iterrows():
+            inv = str(r.get(c_inv, "INV")).strip()
+            invoice_delivery_cash[inv] = invoice_delivery_cash.get(inv, 0.0) + clean_num(r.get(c_cash, 0))
+
+    accounted_cash_invoices = set()
 
     for _, r in cli_sales.iterrows():
-        b_val = clean_num(r.get(c_tot, 0))
-        c_val = clean_num(r.get(c_cash, 0))
-        p_name = str(r.get(c_prod, "Stock Item"))
+        b_val  = clean_num(r.get(c_tot, 0))
+        p_name = str(r.get(c_prod, "Pharmaceutical Item")).strip()
         q_val  = clean_num(r.get(c_qty, 0))
+        f_val  = clean_num(r.get(c_foc, 0)) if c_foc else 0.0
         rt_val = clean_num(r.get(c_rt, 0))
+        inv_no = str(r.get(c_inv, "INV")).strip() if c_inv else "INV"
+        tx_dt  = str(r.get(c_dt, "-")).strip() if c_dt else "-"
+        mr_str = f" [MR: {r.get(c_mr)}]" if c_mr and pd.notna(r.get(c_mr)) and str(r.get(c_mr)).strip() else ""
+
+        foc_str = f" + {f_val:g} FOC" if f_val > 0 else ""
+        particulars = f"{p_name} (Qty: {q_val:g}{foc_str} @ Rs. {rt_val:,.2f}){mr_str}"
 
         statement_rows.append({
-            "Date": str(r.get(c_dt, "-")), "Time": str(r.get(c_tm, "-")),
-            "Ref #": str(r.get(c_inv, "INV")), "Type": "PURCHASE / SALE",
-            "Particulars": f"{p_name} (Qty: {q_val:g}, Rate: Rs. {rt_val:,.2f})",
-            "Debit (+Sale)": b_val, "Credit (-Paid/Ret)": 0.0, "Balance": 0.0
+            "Date": tx_dt,
+            "Ref #": inv_no,
+            "Type": "PURCHASE / INVOICE",
+            "Particulars": particulars,
+            "Debit (+Sale)": b_val,
+            "Credit (-Paid/Ret)": 0.0,
+            "Balance": 0.0
         })
 
-        if c_val > 0:
-            statement_rows.append({
-                "Date": str(r.get(c_dt, "-")), "Time": str(r.get(c_tm, "-")),
-                "Ref #": str(r.get(c_inv, "INV")) + "-CASH", "Type": "DELIVERY CASH",
-                "Particulars": f"Direct Cash Received against {r.get(c_inv, 'Invoice')}",
-                "Debit (+Sale)": 0.0, "Credit (-Paid/Ret)": c_val, "Balance": 0.0
-            })
+        # Insert single delivery cash credit entry for this invoice
+        if inv_no in invoice_delivery_cash and inv_no not in accounted_cash_invoices:
+            c_val = invoice_delivery_cash[inv_no]
+            if c_val > 0:
+                statement_rows.append({
+                    "Date": tx_dt,
+                    "Ref #": f"{inv_no}-CASH",
+                    "Type": "DELIVERY CASH",
+                    "Particulars": f"Direct Cash Received upon delivery of Invoice #{inv_no}",
+                    "Debit (+Sale)": 0.0,
+                    "Credit (-Paid/Ret)": c_val,
+                    "Balance": 0.0
+                })
+            accounted_cash_invoices.add(inv_no)
 
+# 3. Direct Dues Collections / Receipts
 if not cli_col.empty:
     c_dt  = find_col(cli_col, ["Date (A.D.)", "Date", "date"])
-    c_tm  = find_col(cli_col, ["Time", "time"])
-    c_rec = find_col(cli_col, ["Receipt No", "receipt_no", "Receipt"])
-    c_amt = find_col(cli_col, ["Amount Collected", "Amount Collected (Rs.)", "amount"])
-    c_mod = find_col(cli_col, ["Payment Mode", "mode"])
-    c_rem = find_col(cli_col, ["Remarks / Ref", "remarks", "Remarks"])
+    c_rec = find_col(cli_col, ["Receipt / Ref No.", "Receipt No", "receipt_no", "Receipt"])
+    c_amt = find_col(cli_col, ["Amount Collected", "Amount Collected (Rs.)", "amount", "Amount"])
+    c_mod = find_col(cli_col, ["Payment Instrument", "Payment Mode", "mode", "Instrument"])
+    c_rem = find_col(cli_col, ["Transaction Note", "Remarks / Ref", "remarks", "Remarks"])
 
     for _, r in cli_col.iterrows():
         amt = clean_num(r.get(c_amt, 0))
         if amt > 0:
+            rec_no = str(r.get(c_rec, "REC")).strip() if c_rec else "REC"
+            tx_dt  = str(r.get(c_dt, "-")).strip() if c_dt else "-"
+            mode   = str(r.get(c_mod, "Cash")).strip() if c_mod else "Cash"
+            note   = str(r.get(c_rem, "Dues Clearance")).strip() if c_rem else "Dues Clearance"
+
             statement_rows.append({
-                "Date": str(r.get(c_dt, "-")), "Time": str(r.get(c_tm, "-")),
-                "Ref #": str(r.get(c_rec, "REC")), "Type": "PAYMENT RECEIPT",
-                "Particulars": f"Dues Recovery ({r.get(c_mod, 'Cash')}) - {r.get(c_rem, 'Old Dues')}",
-                "Debit (+Sale)": 0.0, "Credit (-Paid/Ret)": amt, "Balance": 0.0
+                "Date": tx_dt,
+                "Ref #": rec_no,
+                "Type": "PAYMENT RECEIPT",
+                "Particulars": f"Collection Recovery via {mode} — {note}",
+                "Debit (+Sale)": 0.0,
+                "Credit (-Paid/Ret)": amt,
+                "Balance": 0.0
             })
 
+# 4. Product Returns
 if not cli_ret.empty:
     c_dt  = find_col(cli_ret, ["Date (A.D.)", "Date", "date"])
-    c_tm  = find_col(cli_ret, ["Time", "time"])
-    c_prd = find_col(cli_ret, ["Product Name", "product_name"])
-    c_qty = find_col(cli_ret, ["Return Qty", "qty"])
-    c_tot = find_col(cli_ret, ["Total Return", "Total Return (Rs.)", "total"])
+    c_prd = find_col(cli_ret, ["Returned Item Name", "Product Name", "product_name"])
+    c_qty = find_col(cli_ret, ["Units Returned", "Return Qty", "qty"])
+    c_tot = find_col(cli_ret, ["Total Return", "Total Return (Rs.)", "total", "Amount"])
     c_rsn = find_col(cli_ret, ["Reason", "reason"])
 
     for _, r in cli_ret.iterrows():
         ret_val = clean_num(r.get(c_tot, 0))
         if ret_val > 0:
+            tx_dt = str(r.get(c_dt, "-")).strip() if c_dt else "-"
+            item  = str(r.get(c_prd, "Stock Item")).strip() if c_prd else "Stock Item"
+            qty   = clean_num(r.get(c_qty, 0)) if c_qty else 0
+            rsn   = str(r.get(c_rsn, "Damage / Expiry")).strip() if c_rsn else ""
+
             statement_rows.append({
-                "Date": str(r.get(c_dt, "-")), "Time": str(r.get(c_tm, "-")),
-                "Ref #": "RETURN", "Type": "STOCK RETURN",
-                "Particulars": f"Credit: {r.get(c_prd, 'Item')} (Qty: {clean_num(r.get(c_qty, 0)):g}) - {r.get(c_rsn, '')}",
-                "Debit (+Sale)": 0.0, "Credit (-Paid/Ret)": ret_val, "Balance": 0.0
+                "Date": tx_dt,
+                "Ref #": "CREDIT-NOTE",
+                "Type": "STOCK RETURN",
+                "Particulars": f"Goods Returned: {item} (Qty: {qty:g}) — {rsn}",
+                "Debit (+Sale)": 0.0,
+                "Credit (-Paid/Ret)": ret_val,
+                "Balance": 0.0
             })
 
+# Compute Cumulative Running Balance
 running_bal = op_dues
 for i in range(1, len(statement_rows)):
     row = statement_rows[i]
@@ -445,6 +559,7 @@ for i in range(1, len(statement_rows)):
 
 stmt_df = pd.DataFrame(statement_rows)
 
+# Format for Presentation
 disp_stmt = stmt_df.copy()
 disp_stmt["Debit (+Sale)"] = disp_stmt["Debit (+Sale)"].apply(lambda v: f"Rs. {v:,.2f}" if v > 0 else "-")
 disp_stmt["Credit (-Paid/Ret)"] = disp_stmt["Credit (-Paid/Ret)"].apply(lambda v: f"Rs. {v:,.2f}" if v > 0 else "-")
@@ -456,43 +571,51 @@ t1, t2, t3, t4, t5 = st.tabs([
     f"🛒 Invoiced Purchases ({len(cli_sales)})",
     f"💵 Payment Receipts ({len(cli_col)})",
     f"🔄 Stock Returns ({len(cli_ret)})",
-    "🏢 All Master Feeds"
+    "🏢 Central Master Feeds"
 ])
 
+# TAB 1: LEDGER STATEMENT
 with t1:
-    st.markdown(f"##### 📜 Official Account Statement — {client_profile['name']}")
+    st.markdown(f"##### 📜 Official Account Statement — {client_profile.get('name')}")
     st.dataframe(disp_stmt, use_container_width=True, hide_index=True)
-    
-    csv_buf = io.BytesIO()
-    stmt_df.to_csv(csv_buf, index=False)
-    st.download_button(
-        label=f"📥 Download Official Statement for {client_profile['name']} (CSV)",
-        data=csv_buf.getvalue(),
-        file_name=f"Statement_{client_profile.get('code','PAR')}_{client_profile['name'].replace(' ', '_')}.csv",
-        mime="text/csv"
-    )
 
+    col_d1, col_d2 = st.columns([2, 5])
+    with col_d1:
+        csv_buf = io.BytesIO()
+        stmt_df.to_csv(csv_buf, index=False)
+        st.download_button(
+            label=f"📥 Download Statement (CSV)",
+            data=csv_buf.getvalue(),
+            file_name=f"Statement_{client_profile.get('code','PAR')}_{client_profile.get('name','Client').replace(' ', '_')}.csv",
+            mime="text/csv",
+            use_container_width=True
+        )
+
+# TAB 2: INVOICES
 with t2:
-    st.markdown(f"##### 🛒 Invoiced Product Purchases — {client_profile['name']}")
+    st.markdown(f"##### 🛒 Invoiced Product Purchases — {client_profile.get('name')}")
     if not cli_sales.empty:
         st.dataframe(cli_sales, use_container_width=True, hide_index=True)
     else:
-        st.info("ℹ️ No new purchase invoices recorded for this client yet.")
+        st.info("ℹ️ No purchase invoices recorded for this client yet.")
 
+# TAB 3: COLLECTIONS
 with t3:
-    st.markdown(f"##### 💵 Dues Collected & Payment Receipts — {client_profile['name']}")
+    st.markdown(f"##### 💵 Dues Collected & Payment Receipts — {client_profile.get('name')}")
     if not cli_col.empty:
         st.dataframe(cli_col, use_container_width=True, hide_index=True)
     else:
         st.info("ℹ️ No payment receipts recorded for this client yet.")
 
+# TAB 4: RETURNS
 with t4:
-    st.markdown(f"##### 🔄 Returned Products & Breakages — {client_profile['name']}")
+    st.markdown(f"##### 🔄 Returned Products & Breakages — {client_profile.get('name')}")
     if not cli_ret.empty:
         st.dataframe(cli_ret, use_container_width=True, hide_index=True)
     else:
         st.info("ℹ️ No product returns recorded for this client.")
 
+# TAB 5: COMPANY-WIDE MASTER FEEDS
 with t5:
     st.markdown("##### 🏢 Company-Wide Live Operations Master Feeds")
     sub_tab1, sub_tab2, sub_tab3, sub_tab4, sub_tab5 = st.tabs([
