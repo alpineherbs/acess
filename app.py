@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import math
-from io import BytesIO
+import io
 
 # --- PAGE SETUP ---
 st.set_page_config(
@@ -64,82 +64,86 @@ st.markdown("""<style>
 }
 </style>""", unsafe_allow_html=True)
 
-# --- MASTER CLIENT LEDGER (BARA & PARSA WITH OPENING DUES) ---
-MASTER_CLIENTS = [
-    # BARA DISTRICT
-    {"name": "Naresh Medical", "code": "BAR-001", "area": "Kalaiya", "district": "Bara", "phone": "9807267001", "dues": 3100},
-    {"name": "Mahir Health Clinic", "code": "BAR-002", "area": "Jeetpur", "district": "Bara", "phone": "9807100296", "dues": 8165},
-    {"name": "Dev Medical", "code": "BAR-003", "area": "Kalaiya", "district": "Bara", "phone": "9845227985", "dues": 1500},
-    {"name": "Nirajan Pharmacy", "code": "BAR-004", "area": "Bakuliya", "district": "Bara", "phone": "9804242586", "dues": 550},
-    {"name": "Hariom Medical", "code": "BAR-005", "area": "Kolvi", "district": "Bara", "phone": "9811229323", "dues": 2300},
-    {"name": "S.K.S Pharma", "code": "BAR-006", "area": "Parsauni", "district": "Bara", "phone": "", "dues": 1175},
-    {"name": "Aayan First Aid Center", "code": "BAR-007", "area": "Simara", "district": "Bara", "phone": "", "dues": 2060},
-    {"name": "Rupa Medical Hall", "code": "BAR-008", "area": "Simara", "district": "Bara", "phone": "", "dues": 5515},
-    {"name": "Sanjeevani Clinic", "code": "BAR-009", "area": "Simara", "district": "Bara", "phone": "9845130209", "dues": 2195},
-    {"name": "Ale Health Clinic", "code": "BAR-010", "area": "Ganj Bhawanipur", "district": "Bara", "phone": "", "dues": 1645},
-    {"name": "Alex Medical Hall", "code": "BAR-011", "area": "Bagrampur", "district": "Bara", "phone": "", "dues": 18000},
-    {"name": "Kaliyani Medical Hall", "code": "BAR-012", "area": "Kolvi", "district": "Bara", "phone": "", "dues": 15580},
-    {"name": "Shohalal Medical Hall", "code": "BAR-013", "area": "Ganj Bhawanipur", "district": "Bara", "phone": "9814286651", "dues": 7175},
-    {"name": "Everest Health Clinic", "code": "BAR-014", "area": "Kalaiya", "district": "Bara", "phone": "", "dues": 2635},
-    {"name": "Roman Surgical", "code": "BAR-015", "area": "Khopawa", "district": "Bara", "phone": "9821231370", "dues": 1660},
-    {"name": "Nimash Medical", "code": "BAR-016", "area": "Simara", "district": "Bara", "phone": "9845120836", "dues": 4620},
-    {"name": "Advance Poli Clinic", "code": "BAR-017", "area": "Raghunathpur", "district": "Bara", "phone": "9809153231", "dues": 4310},
-    {"name": "Prithvi Medical Hall", "code": "BAR-018", "area": "Jaitapur", "district": "Bara", "phone": "", "dues": 6745},
-    {"name": "Safe Life Hospital", "code": "BAR-019", "area": "Benauli", "district": "Bara", "phone": "", "dues": 740},
-    {"name": "Alina Health Clinic", "code": "BAR-020", "area": "Kalaiya", "district": "Bara", "phone": "", "dues": 8250},
-    {"name": "Hargendra Pande Medical", "code": "BAR-021", "area": "Rautahar", "district": "Bara", "phone": "", "dues": 500},
-    {"name": "Jungbahadur Medical", "code": "BAR-022", "area": "Bagrampur", "district": "Bara", "phone": "", "dues": 200},
-    {"name": "Aarabh Pharmacy", "code": "BAR-023", "area": "Nijgadh", "district": "Bara", "phone": "9855019764", "dues": 36725},
-    {"name": "Aarabh Pharmacy (Narayani)", "code": "BAR-024", "area": "Nijgadh", "district": "Bara", "phone": "9855019764", "dues": 25915},
-    {"name": "Sanniya Medical Hall", "code": "BAR-025", "area": "Jeetpur", "district": "Bara", "phone": "", "dues": 3460},
-    {"name": "Bala Ji Medical Hall", "code": "BAR-026", "area": "Aarnawa Chouk", "district": "Bara", "phone": "", "dues": 3195},
-    {"name": "Sapna Health Clinic", "code": "BAR-027", "area": "Bariyarpur", "district": "Bara", "phone": "", "dues": 1365},
-    {"name": "Gudi Pharmacy", "code": "BAR-028", "area": "Bariyarpur", "district": "Bara", "phone": "", "dues": 0},
-    {"name": "OM Shivsakti Pharmacy", "code": "BAR-029", "area": "Kalaiya", "district": "Bara", "phone": "", "dues": 3680},
+# --- MASTER CLIENT LEDGER (SYNTAX-SAFE CSV TEXT BLOCK) ---
+CLIENTS_DATA = """name,code,area,district,phone,dues
+Naresh Medical,BAR-001,Kalaiya,Bara,9807267001,3100
+Mahir Health Clinic,BAR-002,Jeetpur,Bara,9807100296,8165
+Dev Medical,BAR-003,Kalaiya,Bara,9845227985,1500
+Nirajan Pharmacy,BAR-004,Bakuliya,Bara,9804242586,550
+Hariom Medical,BAR-005,Kolvi,Bara,9811229323,2300
+S.K.S Pharma,BAR-006,Parsauni,Bara,,1175
+Aayan First Aid Center,BAR-007,Simara,Bara,,2060
+Rupa Medical Hall,BAR-008,Simara,Bara,,5515
+Sanjeevani Clinic,BAR-009,Simara,Bara,9845130209,2195
+Ale Health Clinic,BAR-010,Ganj Bhawanipur,Bara,,1645
+Alex Medical Hall,BAR-011,Bagrampur,Bara,,18000
+Kaliyani Medical Hall,BAR-012,Kolvi,Bara,,15580
+Shohalal Medical Hall,BAR-013,Ganj Bhawanipur,Bara,9814286651,7175
+Everest Health Clinic,BAR-014,Kalaiya,Bara,,2635
+Roman Surgical,BAR-015,Khopawa,Bara,9821231370,1660
+Nimash Medical,BAR-016,Simara,Bara,9845120836,4620
+Advance Poli Clinic,BAR-017,Raghunathpur,Bara,9809153231,4310
+Prithvi Medical Hall,BAR-018,Jaitapur,Bara,,6745
+Safe Life Hospital,BAR-019,Benauli,Bara,,740
+Alina Health Clinic,BAR-020,Kalaiya,Bara,,8250
+Hargendra Pande Medical,BAR-021,Rautahar,Bara,,500
+Jungbahadur Medical,BAR-022,Bagrampur,Bara,,200
+Aarabh Pharmacy,BAR-023,Nijgadh,Bara,9855019764,36725
+Aarabh Pharmacy (Narayani),BAR-024,Nijgadh,Bara,9855019764,25915
+Sanniya Medical Hall,BAR-025,Jeetpur,Bara,,3460
+Bala Ji Medical Hall,BAR-026,Aarnawa Chouk,Bara,,3195
+Sapna Health Clinic,BAR-027,Bariyarpur,Bara,,1365
+Gudi Pharmacy,BAR-028,Bariyarpur,Bara,,0
+OM Shivsakti Pharmacy,BAR-029,Kalaiya,Bara,,3680
+Aditi Pharmacy,PAR-001,Manwa Bazar,Parsa,,500
+Ashok Medical Hall,PAR-002,Naukatola,Parsa,,12230
+Sudama Surgical,PAR-003,Neutan,Parsa,,20200
+B.S Health Clinic,PAR-004,Paterwa,Parsa,,24665
+Pandey Medical Hall,PAR-005,Badanihar,Parsa,,7065
+Bhawani Medical Hall,PAR-006,Bharatwa,Parsa,,9950
+Chandip Medical Hall,PAR-007,Kathmandu Tol,Parsa,,0
+Dinamik Pharma,PAR-008,Sano Sugauli,Parsa,,15815
+Everest Pharmacy,PAR-009,Birwa Chouk,Parsa,,0
+Fatepur Health Clinic,PAR-010,Fatepur,Parsa,,0
+Gadi Mai Medical Hall,PAR-011,Pachgawa,Parsa,,0
+Ganesh Srestha,PAR-012,Birgunj,Parsa,,63390
+Harnaiya Aashirvad Medical,PAR-013,Harnaiya,Parsa,,4565
+Madhav Medical Hall,PAR-014,Pachgawa,Parsa,,0
+Nawal Kishor Medical Hall,PAR-015,Pachgawa,Parsa,,0
+Nausad Medical Hall,PAR-016,Rangapur,Parsa,,0
+Kohinoor Medical Hall,PAR-017,Milan Chouk,Parsa,,0
+Sibil Medical Hall,PAR-018,Milan Chouk,Parsa,,0
+Noor Tamana Health Clinic,PAR-019,Derbana,Parsa,,0
+Aftab Medical Hall,PAR-020,Derbana,Parsa,,0
+Pandey Medical Hall (Murli),PAR-021,Murli,Parsa,,700
+Puja Medical Hall,PAR-022,Fatepur,Parsa,,1030
+Raina Health Clinic,PAR-023,Veda Tol,Parsa,,3672
+Rihansh Medical Hall,PAR-024,Birgunj,Parsa,,1740
+Roshan Pharmacy,PAR-025,Birgunj,Parsa,,74290
+Samir Medical Hall,PAR-026,Pachgawa,Parsa,,0
+Sandip Medical Hall,PAR-027,Langada Chouk,Parsa,,30195
+Sohil Medical Hall,PAR-028,Pokhariya,Parsa,,11600
+Tarai Medical Hall,PAR-029,Manwa Bazar,Parsa,,235
+Tarkeshwar Medical Hall,PAR-030,Nagwa,Parsa,,8885
+Jitendra Health Clinic,PAR-031,Mahuwan,Parsa,,4565
+Anshari Medical Hall,PAR-032,Derbana,Parsa,,0
+Jay Shree Gadhi Mai Medical,PAR-033,Lautan,Parsa,,1575
+Dinanath Medical Hall,PAR-034,Harpur,Parsa,,1740
+Shahu Pharmacy,PAR-035,Dokaila,Parsa,,0
+G.K.S Pharmacy,PAR-036,Narahi Bazar,Parsa,,0
+Bagmorcha Mai Medical,PAR-037,Bagmorcha,Parsa,,0
+Pushpa Medical Hall,PAR-038,Kathariya,Parsa,,105
+Satiya Health Clinic,PAR-039,Lautan,Parsa,,0
+Anil Medical Hall,PAR-040,Gadwal,Parsa,,0
+Harnaiya City Hospital,PAR-041,Harnaiya,Parsa,,0"""
 
-    # PARSA DISTRICT
-    {"name": "Aditi Pharmacy", "code": "PAR-001", "area": "Manwa Bazar", "district": "Parsa", "phone": "", "dues": 500},
-    {"name": "Ashok Medical Hall", "code": "PAR-002", "area": "Naukatola", "district": "Parsa", "phone": "", "dues": 12230},
-    {"name": "Sudama Surgical", "code": "PAR-003", "area": "Neutan", "district": "Parsa", "phone": "", "dues": 20200},
-    {"name": "B.S Health Clinic", "code": "PAR-004", "area": "Paterwa", "district": "Parsa", "phone": "", "dues": 24665},
-    {"name": "Pandey Medical Hall", "code": "PAR-005", "area": "Badanihar", "district": "Parsa", "phone": "", "dues": 7065},
-    {"name": "Bhawani Medical Hall", "code": "PAR-006", "area": "Bharatwa", "district": "Parsa", "phone": "", "dues": 9950},
-    {"name": "Chandip Medical Hall", "code": "PAR-007", "area": "Kathmandu Tol", "district": "Parsa", "phone": "", "dues": 0},
-    {"name": "Dinamik Pharma", "code": "PAR-008", "area": "Sano Sugauli", "district": "Parsa", "phone": "", "dues": 15815},
-    {"name": "Everest Pharmacy", "code": "PAR-009", "area": "Birwa Chouk", "district": "Parsa", "phone": "", "dues": 0},
-    {"name": "Fatepur Health Clinic", "code": "PAR-010", "area": "Fatepur", "district": "Parsa", "phone": "", "dues": 0},
-    {"name": "Gadi Mai Medical Hall", "code": "PAR-011", "area": "Pachgawa", "district": "Parsa", "phone": "", "dues": 0},
-    {"name": "Ganesh Srestha", "code": "PAR-012", "area": "Birgunj", "district": "Parsa", "phone": "", "dues": 63390},
-    {"name": "Harnaiya Aashirvad Medical", "code": "PAR-013", "area": "Harnaiya", "district": "Parsa", "phone": "", "dues": 4565},
-    {"name": "Madhav Medical Hall", "code": "PAR-014", "area": "Pachgawa", "district": "Parsa", "phone": "", "dues": 0},
-    {"name": "Nawal Kishor Medical Hall", "code": "PAR-015", "area": "Pachgawa", "district": "Parsa", "phone": "", "dues": 0},
-    {"name": "Nausad Medical Hall", "code": "PAR-016", "area": "Rangapur", "district": "Parsa", "phone": "", "dues": 0},
-    {"name": "Kohinoor Medical Hall", "code": "PAR-017", "area": "Milan Chouk", "district": "Parsa", "phone": "", "dues": 0},
-    {"name": "Sibil Medical Hall", "code": "PAR-018", "area": "Milan Chouk", "district": "Parsa", "phone": "", "dues": 0},
-    {"name": "Noor Tamana Health Clinic", "code": "PAR-019", "area": "Derbana", "district": "Parsa", "phone": "", "dues": 0},
-    {"name": "Aftab Medical Hall", "code": "PAR-020", "area": "Derbana", "district": "Parsa", "phone": "", "dues": 0},
-    {"name": "Pandey Medical Hall (Murli)", "code": "PAR-021", "area": "Murli", "district": "Parsa", "phone": "", "dues": 700},
-    {"name": "Puja Medical Hall", "code": "PAR-022", "area": "Fatepur", "district": "Parsa", "phone": "", "dues": 1030},
-    {"name": "Raina Health Clinic", "code": "PAR-023", "area": "Veda Tol", "district": "Parsa", "phone": "", "dues": 3672},
-    {"name": "Rihansh Medical Hall", "code": "PAR-024", "area": "Birgunj", "district": "Parsa", "phone": "", "dues": 1740},
-    {"name": "Roshan Pharmacy", "code": "PAR-025", "area": "Birgunj", "district": "Parsa", "phone": "", "dues": 74290},
-    {"name": "Samir Medical Hall", "code": "PAR-026", "area": "Pachgawa", "district": "Parsa", "phone": "", "dues": 0},
-    {"name": "Sandip Medical Hall", "code": "PAR-027", "area": "Langada Chouk", "district": "Parsa", "phone": "", "dues": 30195},
-    {"name": "Sohil Medical Hall", "code": "PAR-028", "area": "Pokhariya", "district": "Parsa", "phone": "", "dues": 11600},
-    {"name": "Tarai Medical Hall", "code": "PAR-029", "area": "Manwa Bazar", "district": "Parsa", "phone": "", "dues": 235},
-    {"name": "Tarkeshwar Medical Hall", "code": "PAR-030", "area": "Nagwa", "district": "Parsa", "phone": "", "dues": 8885},
-    {"name": "Jitendra Health Clinic", "code": "PAR-031", "area": "Mahuwan", "district": "Parsa", "phone": "", "dues": 4565},
-    {"name": "Anshari Medical Hall", "code": "PAR-032", "area": "Derbana", "district": "Parsa", "phone": "", "dues": 0},
-    {"name": "Jay Shree Gadhi Mai Medical", "code": "PAR-033", "area": "Lautan", "district": "Parsa", "phone": "", "dues": 1575},
-    {"name": "Dinanath Medical Hall", "code": "PAR-034", "area": "Harpur", "district": "Parsa", "phone": "", "dues": 1740},
-    {"name": "Shahu Pharmacy", "code": "PAR-035", "area": "Dokaila", "district": "Parsa", "phone": "", "dues": 0},
-    {"name": "G.K.S Pharmacy", "code": "PAR-036", "area": "Narahi Bazar", "district": "Parsa", "phone": "", "dues": 0},
-    {"name": "Bagmorcha Mai Medical", "code": "PAR-037", "area": "Bagmorcha", "district": "Parsa", "phone": "", "dues": 0},
-    {"name": "Pushpa Medical Hall", "code": "PAR-038", "area": "Kathariya", "district": "Parsa", "phone": "", "dues": 105},
-    {"name": "Satiya Health Clinic", "code": "PAR-039", "area": "Lautan", "district": "Parsa", "phone": "", "dues": 0},
-    {"name": "Anil Medical Hall", "code": "PAR-040", "area": "Gadwal", "district": "Parsa", "phone": "", "dues": 0},
-    {"name": "Harnaiya City Hospital", "code": "PAR-041", "area": "Harnaiya", "district": "Parsa", "phone": "", "dues": 0}
-]
+# Parse safely into records with zero brace-matching errors
+MASTER_CLIENTS = pd.read_csv(io.StringIO(CLIENTS_DATA.strip()), dtype=str).fillna("").to_dict("records")
+for c in MASTER_CLIENTS:
+    try:
+        c["dues"] = float(c["dues"]) if c["dues"] != "" else 0.0
+    except:
+        c["dues"] = 0.0
 
 # --- UTILITIES ---
 def clean_num(val):
@@ -287,7 +291,6 @@ op_dues = float(client_profile.get("dues", 0.0))
 
 col_stot  = find_col(cli_sales, ["Total Sale", "Total Sale (Rs.)", "Total Billed", "Total"])
 col_scash = find_col(cli_sales, ["Cash Recd", "Cash Recd (Rs.)", "Cash Collected", "Cash"])
-col_scred = find_col(cli_sales, ["Credit Given", "Credit Given (Rs.)", "Credit"])
 
 tot_cli_billed = cli_sales[col_stot].apply(clean_num).sum() if col_stot and not cli_sales.empty else 0.0
 tot_cli_direct_cash = cli_sales[col_scash].apply(clean_num).sum() if col_scash and not cli_sales.empty else 0.0
@@ -360,14 +363,12 @@ st.write("")
 # --- BUILD CHRONOLOGICAL STATEMENT ---
 statement_rows = []
 
-# 1. Opening Balance Line
 statement_rows.append({
     "Date": "Opening", "Time": "-", "Ref #": "INIT-DUES",
     "Type": "OPENING BALANCE", "Particulars": "Previous Ledger Outstanding Balance",
     "Debit (+Sale)": op_dues, "Credit (-Paid/Ret)": 0.0, "Balance": op_dues
 })
 
-# 2. Sales Invoices
 if not cli_sales.empty:
     c_dt   = find_col(cli_sales, ["Date (A.D.)", "Date", "date"])
     c_tm   = find_col(cli_sales, ["Time", "time"])
@@ -385,7 +386,6 @@ if not cli_sales.empty:
         q_val  = clean_num(r.get(c_qty, 0))
         rt_val = clean_num(r.get(c_rt, 0))
 
-        # Add Sale Debit
         statement_rows.append({
             "Date": str(r.get(c_dt, "-")), "Time": str(r.get(c_tm, "-")),
             "Ref #": str(r.get(c_inv, "INV")), "Type": "PURCHASE / SALE",
@@ -393,7 +393,6 @@ if not cli_sales.empty:
             "Debit (+Sale)": b_val, "Credit (-Paid/Ret)": 0.0, "Balance": 0.0
         })
 
-        # Add Cash on Delivery Credit
         if c_val > 0:
             statement_rows.append({
                 "Date": str(r.get(c_dt, "-")), "Time": str(r.get(c_tm, "-")),
@@ -402,7 +401,6 @@ if not cli_sales.empty:
                 "Debit (+Sale)": 0.0, "Credit (-Paid/Ret)": c_val, "Balance": 0.0
             })
 
-# 3. Dues Collections / Payment Receipts
 if not cli_col.empty:
     c_dt  = find_col(cli_col, ["Date (A.D.)", "Date", "date"])
     c_tm  = find_col(cli_col, ["Time", "time"])
@@ -421,7 +419,6 @@ if not cli_col.empty:
                 "Debit (+Sale)": 0.0, "Credit (-Paid/Ret)": amt, "Balance": 0.0
             })
 
-# 4. Goods Returns
 if not cli_ret.empty:
     c_dt  = find_col(cli_ret, ["Date (A.D.)", "Date", "date"])
     c_tm  = find_col(cli_ret, ["Time", "time"])
@@ -440,7 +437,6 @@ if not cli_ret.empty:
                 "Debit (+Sale)": 0.0, "Credit (-Paid/Ret)": ret_val, "Balance": 0.0
             })
 
-# Calculate Running Balance Row by Row
 running_bal = op_dues
 for i in range(1, len(statement_rows)):
     row = statement_rows[i]
@@ -449,13 +445,12 @@ for i in range(1, len(statement_rows)):
 
 stmt_df = pd.DataFrame(statement_rows)
 
-# Format currency columns for visual table
 disp_stmt = stmt_df.copy()
 disp_stmt["Debit (+Sale)"] = disp_stmt["Debit (+Sale)"].apply(lambda v: f"Rs. {v:,.2f}" if v > 0 else "-")
 disp_stmt["Credit (-Paid/Ret)"] = disp_stmt["Credit (-Paid/Ret)"].apply(lambda v: f"Rs. {v:,.2f}" if v > 0 else "-")
 disp_stmt["Balance"] = disp_stmt["Balance"].apply(lambda v: f"Rs. {v:,.2f}")
 
-# --- TABS FOR COMPLETE DRILLDOWN ---
+# --- DRILLDOWN TABS ---
 t1, t2, t3, t4, t5 = st.tabs([
     f"📜 Full Ledger Statement ({len(stmt_df)})",
     f"🛒 Invoiced Purchases ({len(cli_sales)})",
@@ -468,7 +463,7 @@ with t1:
     st.markdown(f"##### 📜 Official Account Statement — {client_profile['name']}")
     st.dataframe(disp_stmt, use_container_width=True, hide_index=True)
     
-    csv_buf = BytesIO()
+    csv_buf = io.BytesIO()
     stmt_df.to_csv(csv_buf, index=False)
     st.download_button(
         label=f"📥 Download Official Statement for {client_profile['name']} (CSV)",
